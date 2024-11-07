@@ -179,26 +179,68 @@ async def show_price_list(callback_query: CallbackQuery):
     description = bookings.get('price_list_description', 'Описание прайс-листа пока не добавлено.')
     photo_file_id = bookings.get('price_list_photo')
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Назад", callback_data="main_menu")]
+        [InlineKeyboardButton(text="Назад", callback_data="back_to_main_menu")]
     ])
     await callback_query.answer()
     if photo_file_id:
         await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=description, reply_markup=markup)
+        await callback_query.message.delete()
     else:
         await bot.send_message(chat_id=callback_query.message.chat.id, text=description, reply_markup=markup)
-    await callback_query.message.delete()
-
-# Обработчик нажатия кнопки "Назад" для возвращения на главное меню
-@dp.callback_query(lambda c: c.data == 'main_menu')
-async def process_callback_main_menu(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    await callback_query.answer()
-
-    # Проверка, существует ли сообщение перед его удалением
-    if callback_query.message:
         await callback_query.message.delete()
 
-    # Отправляем новое сообщение с главным меню
+# Обработчик вызова редактирования прайс-листа
+@dp.callback_query(lambda c: c.data == 'edit_price_list')
+async def process_callback_edit_price_list(callback_query: CallbackQuery):
+    await callback_query.answer()
+    await callback_query.message.edit_text("Введите описание прайс-листа и загрузите фото (если требуется).")
+    bookings['awaiting_price_list_description'] = True  # Устанавливаем флаг ожидания описания
+
+# Обработчик для добавления прайс-листа без команды
+@dp.message(lambda message: bookings.get('awaiting_price_list_description'))
+async def add_price_list_info(message: Message):
+    try:
+        description = message.text
+        bookings['price_list_description'] = description
+        bookings.pop('awaiting_price_list_description', None)  # Убираем флаг ожидания описания
+        bookings['awaiting_price_list_photo'] = True  # Устанавливаем флаг ожидания фото
+        await message.answer("Описание прайс-листа обновлено. Теперь загрузите фото.")
+    except Exception as e:
+        await message.answer("Ошибка при добавлении прайс-листа. Попробуйте снова.")
+
+# Обработчик для загрузки фото прайс-листа
+@dp.message(lambda message: message.photo and bookings.get('awaiting_price_list_photo'))
+async def handle_price_list_photo(message: Message):
+    if bookings.get('awaiting_price_list_photo'):
+        photo_file_id = message.photo[-1].file_id
+        bookings['price_list_photo'] = photo_file_id
+        bookings.pop('awaiting_price_list_photo', None)  # Убираем флаг ожидания фото
+        await message.answer("Фото прайс-листа обновлено.")
+    else:
+        await message.answer("Пожалуйста, сначала добавьте описание прайс-листа.")
+
+# Обработчик для отображения прайс-листа
+@dp.callback_query(lambda c: c.data == 'price_list')
+async def show_price_list(callback_query: CallbackQuery):
+    description = bookings.get('price_list_description', 'Описание прайс-листа пока не добавлено.')
+    photo_file_id = bookings.get('price_list_photo')
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Назад", callback_data="back_to_main_menu")]
+    ])
+    await callback_query.answer()
+    if photo_file_id:
+        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=description, reply_markup=markup)
+        await callback_query.message.delete()
+    else:
+        await bot.send_message(chat_id=callback_query.message.chat.id, text=description, reply_markup=markup)
+        await callback_query.message.delete()
+
+# Обработчик нажатия кнопки "Назад"
+@dp.callback_query(lambda c: c.data == 'back_to_main_menu')
+async def process_callback_back_to_main_menu(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    await callback_query.answer()
+    await callback_query.message.delete()
     await bot.send_message(callback_query.message.chat.id, "Выберите действие:", reply_markup=main_menu(user_id))
 
 # Удаление мастера
@@ -414,12 +456,7 @@ async def show_inactive_bookings(callback_query: CallbackQuery):
         await callback_query.message.answer("Нет неактивных записей.")
     await callback_query.answer()
 
-# Обработчик нажатия кнопки "Редактировать"
-@dp.callback_query(lambda c: c.data.startswith('edit_'))
-async def edit_booking(callback_query: CallbackQuery):
-    callback_data = callback_query.data.split('edit_')[1]
-    # Реализуйте логику редактирования записи здесь
-    await callback_query.answer("Редактирование записи еще не реализовано.", show_alert=True)
+
 
 # Обработчик нажатия кнопки "Отменить"
 @dp.callback_query(lambda c: c.data.startswith('cancel_'))
