@@ -1,10 +1,10 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from database import *
+from sqlalchemy.orm import relationship
+
+from database.database import Base
 
 
-
-# Таблица Юзер
+# Таблица User
 class User(Base):
     __tablename__ = 'user'
 
@@ -14,7 +14,7 @@ class User(Base):
     # Связь с таблицей "Записи"
     records = relationship("Record", back_populates="user")
 
-# Таблица Мастер
+# Таблица Master
 class Master(Base):
     __tablename__ = 'master'
 
@@ -26,7 +26,7 @@ class Master(Base):
     # Связь с таблицей "Записи"
     records = relationship("Record", back_populates="master")
 
-# Таблица Записи
+# Таблица Record
 class Record(Base):
     __tablename__ = 'record'
 
@@ -35,7 +35,6 @@ class Record(Base):
     user_id = Column(Integer, ForeignKey('user.id'))
     master_id = Column(Integer, ForeignKey('master.id'))
 
-    # Связь с таблицами "Юзер" и "Мастер"
+    # Связь с таблицами "User" и "Master"
     user = relationship("User", back_populates="records")
     master = relationship("Master", back_populates="records")
-

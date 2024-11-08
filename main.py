@@ -4,49 +4,22 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, C
 from aiogram.filters import Command
 from aiogram.types import ContentType
 from datetime import datetime
-from database.database import create_tables
+from database.tables_creation import create_tables
 import asyncio
-
+from database.models import User, Master, Record
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config.reader import ADMIN_ID, MASTER_IDS
+from loader import bot, dp
 
-
-
-
-# # Пример создания пользователя
-# user = create_user(session, "new_nickname")
-#
-# # Пример получения пользователя по ID
-# retrieved_user = get_user_by_id(session, user.id)
-#
-# # Пример обновления никнейма пользователя
-# updated_user = update_user_nickname(session, user.id, "updated_nickname")
-#
-# # Пример удаления пользователя
-# delete_user(session, user.id)
-#
-# # Пример создания мастера
-# master = create_master(session, "Master Name", "Description", "photo_url")
-#
-# # Пример создания записи
-# record = create_record(session, datetime.now(), user.id, master.id)
-
-
-API_TOKEN = '8125320786:AAGwJYhb6MISHjdWmxll9JC3_MNLLnCxxUE'
-ADMIN_ID = 475953677
-MASTER_IDS = {'6754920583'}
 
 logging.basicConfig(level=logging.INFO)
 
-
-
-
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
 
 # Глобальные переменные для хранения информации о занятых временах и пользователях
 bookings = {}
 masters = {}
 users = set()
+
 
 # Основное меню
 def main_menu(user_id):
@@ -68,10 +41,12 @@ def main_menu(user_id):
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
+
 def back_to_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Назад", callback_data="main_menu", width=7)]
     ])
+
 
 # Обработчик команды /start
 @dp.message(Command("start"))
@@ -79,12 +54,14 @@ async def send_welcome(message: Message):
     user_id = message.from_user.id
     await message.answer("Добро пожаловать! Нажмите 'Начать' для продолжения.", reply_markup=main_menu(user_id))
 
+
 # Обработчик нажатия кнопки "Начать"
 @dp.callback_query(lambda c: c.data == 'main_menu')
 async def process_callback_main_menu(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     await callback_query.answer()
     await callback_query.message.edit_text("Выберите действие:", reply_markup=main_menu(user_id))
+
 
 # Обработчик вызова админ панели
 @dp.callback_query(lambda c: c.data == 'admin_panel')
@@ -95,6 +72,7 @@ async def process_callback_admin_panel(callback_query: CallbackQuery):
         await callback_query.message.edit_text("Административная панель:", reply_markup=admin_panel())
     else:
         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
+
 
 def admin_panel():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -112,8 +90,10 @@ def admin_panel():
 @dp.callback_query(lambda c: c.data == 'edit_masters_info')
 async def process_callback_edit_masters_info(callback_query: CallbackQuery):
     await callback_query.answer()
-    await callback_query.message.edit_text("Введите информацию о мастерах командой /add_masters_info в формате:\nИмя, Описание\nПовторите для каждого мастера.")
+    await callback_query.message.edit_text(
+        "Введите информацию о мастерах командой /add_masters_info в формате:\nИмя, Описание\nПовторите для каждого мастера.")
     bookings['awaiting_masters_info'] = True  # Устанавливаем флаг ожидания информации о мастерах
+
 
 # Обработчик для добавления информации о мастерах
 @dp.message(Command("add_masters_info"))
@@ -130,6 +110,7 @@ async def add_masters_info(message: Message):
     else:
         await message.answer("Для начала редактирования используйте кнопку в админ панели.")
 
+
 # Обработчик для отображения информации о мастерах
 @dp.callback_query(lambda c: c.data == 'masters')
 async def show_masters(callback_query: CallbackQuery):
@@ -143,7 +124,9 @@ async def show_masters(callback_query: CallbackQuery):
     if callback_query.message and callback_query.message.text:
         await callback_query.message.edit_text("Выберите мастера для просмотра информации:", reply_markup=markup)
     else:
-        await bot.send_message(callback_query.message.chat.id, "Выберите мастера для просмотра информации:", reply_markup=markup)
+        await bot.send_message(callback_query.message.chat.id, "Выберите мастера для просмотра информации:",
+                               reply_markup=markup)
+
 
 # Обработчик для отображения информации выбранного мастера
 @dp.callback_query(lambda c: c.data.startswith('show_master_'))
@@ -157,10 +140,13 @@ async def show_selected_master(callback_query: CallbackQuery):
     ])
     await callback_query.answer()
     if photo_file_id:
-        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=f"{master_name}\n\n{description}", reply_markup=markup)
+        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id,
+                             caption=f"{master_name}\n\n{description}", reply_markup=markup)
     else:
-        await bot.send_message(chat_id=callback_query.message.chat.id, text=f"{master_name}\n\n{description}", reply_markup=markup)
+        await bot.send_message(chat_id=callback_query.message.chat.id, text=f"{master_name}\n\n{description}",
+                               reply_markup=markup)
     await callback_query.message.delete()
+
 
 # Обработчик вызова добавления мастера
 @dp.callback_query(lambda c: c.data == 'add_master')
@@ -168,6 +154,7 @@ async def process_callback_add_master(callback_query: CallbackQuery):
     await callback_query.answer()
     await callback_query.message.edit_text("Введите имя мастера:")
     bookings['awaiting_master_name'] = True  # Устанавливаем флаг ожидания имени мастера
+
 
 # Обработчик для добавления имени мастера
 @dp.message(lambda message: bookings.get('awaiting_master_name'))
@@ -178,6 +165,7 @@ async def add_master_name(message: Message):
     bookings['awaiting_master_description'] = master_name
     await message.answer(f"Мастер {master_name} добавлен. Введите описание мастера:")
 
+
 # Обработчик для добавления описания мастера
 @dp.message(lambda message: 'awaiting_master_description' in bookings)
 async def add_master_description(message: Message):
@@ -187,6 +175,7 @@ async def add_master_description(message: Message):
     bookings.pop('awaiting_master_description')
     bookings['awaiting_master_photo'] = master_name
     await message.answer(f"Описание для мастера {master_name} добавлено. Теперь загрузите фото.")
+
 
 # Обработчик для загрузки фото мастера
 @dp.message(lambda message: message.photo and 'awaiting_master_photo' in bookings)
@@ -199,6 +188,7 @@ async def handle_master_photo(message: Message):
     else:
         await message.answer("Ошибка при добавлении фото. Попробуйте снова.")
 
+
 # Обработчик для отображения прайс-листа
 @dp.callback_query(lambda c: c.data == 'price_list')
 async def show_price_list(callback_query: CallbackQuery):
@@ -209,11 +199,13 @@ async def show_price_list(callback_query: CallbackQuery):
     ])
     await callback_query.answer()
     if photo_file_id:
-        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=description, reply_markup=markup)
+        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=description,
+                             reply_markup=markup)
         await callback_query.message.delete()
     else:
         await bot.send_message(chat_id=callback_query.message.chat.id, text=description, reply_markup=markup)
         await callback_query.message.delete()
+
 
 # Обработчик вызова редактирования прайс-листа
 @dp.callback_query(lambda c: c.data == 'edit_price_list')
@@ -221,6 +213,7 @@ async def process_callback_edit_price_list(callback_query: CallbackQuery):
     await callback_query.answer()
     await callback_query.message.edit_text("Введите описание прайс-листа и загрузите фото (если требуется).")
     bookings['awaiting_price_list_description'] = True  # Устанавливаем флаг ожидания описания
+
 
 # Обработчик для добавления прайс-листа без команды
 @dp.message(lambda message: bookings.get('awaiting_price_list_description'))
@@ -234,6 +227,7 @@ async def add_price_list_info(message: Message):
     except Exception as e:
         await message.answer("Ошибка при добавлении прайс-листа. Попробуйте снова.")
 
+
 # Обработчик для загрузки фото прайс-листа
 @dp.message(lambda message: message.photo and bookings.get('awaiting_price_list_photo'))
 async def handle_price_list_photo(message: Message):
@@ -245,6 +239,7 @@ async def handle_price_list_photo(message: Message):
     else:
         await message.answer("Пожалуйста, сначала добавьте описание прайс-листа.")
 
+
 # Обработчик для отображения прайс-листа
 @dp.callback_query(lambda c: c.data == 'price_list')
 async def show_price_list(callback_query: CallbackQuery):
@@ -255,11 +250,13 @@ async def show_price_list(callback_query: CallbackQuery):
     ])
     await callback_query.answer()
     if photo_file_id:
-        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=description, reply_markup=markup)
+        await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id, caption=description,
+                             reply_markup=markup)
         await callback_query.message.delete()
     else:
         await bot.send_message(chat_id=callback_query.message.chat.id, text=description, reply_markup=markup)
         await callback_query.message.delete()
+
 
 # Обработчик нажатия кнопки "Назад"
 @dp.callback_query(lambda c: c.data == 'back_to_main_menu')
@@ -269,15 +266,18 @@ async def process_callback_back_to_main_menu(callback_query: CallbackQuery):
     await callback_query.message.delete()
     await bot.send_message(callback_query.message.chat.id, "Выберите действие:", reply_markup=main_menu(user_id))
 
+
 # Удаление мастера
 @dp.callback_query(lambda c: c.data == 'delete_master')
 async def process_delete_master(callback_query: CallbackQuery):
     await callback_query.answer()
     if masters:
         master_list = "\n".join([f"{m_id}: {m_info['name']}" for m_id, m_info in masters.items()])
-        await callback_query.message.edit_text(f"Выберите мастера для удаления:\n{master_list}\nОтправьте ID мастера командой /delete_master_info")
+        await callback_query.message.edit_text(
+            f"Выберите мастера для удаления:\n{master_list}\nОтправьте ID мастера командой /delete_master_info")
     else:
         await callback_query.message.edit_text("Нет доступных мастеров для удаления.")
+
 
 @dp.message(Command("delete_master_info"))
 async def delete_master_info(message: Message):
@@ -292,11 +292,13 @@ async def delete_master_info(message: Message):
     except Exception as e:
         await message.answer("Ошибка при удалении мастера. Попробуйте снова.")
 
+
 # Команда для получения ID пользователем
 @dp.message(Command("getid"))
 async def send_user_id(message: Message):
     user_id = message.from_user.id
     await message.answer(f"Ваш ID: {user_id}")
+
 
 # Сбор запросов пользователей на получение их ID
 @dp.message(Command("getid"))
@@ -304,6 +306,7 @@ async def send_user_id(message: Message):
     user_id = message.from_user.id
     users.add(user_id)
     await message.answer(f"Ваш ID: {user_id} был отправлен администратору.")
+
 
 # Команда для администратора для получения списка всех запросов ID
 @dp.message(Command("showids"))
@@ -316,7 +319,6 @@ async def show_all_user_ids(message: Message):
             await message.answer("Нет запросов на получение ID.")
     else:
         await message.answer("У вас нет доступа к этой функции.")
-
 
 
 # Обработчик нажатия кнопки "Записаться"
@@ -334,6 +336,7 @@ async def process_callback_booking(callback_query: CallbackQuery):
         [InlineKeyboardButton(text="Назад", callback_data="main_menu", width=7)]
     ])
     await callback_query.message.edit_text("Выберите мастера:", reply_markup=master_menu)
+
 
 # Обработчик выбора мастера
 @dp.callback_query(lambda c: c.data.startswith('master_'))
@@ -378,6 +381,7 @@ async def process_callback_master(callback_query: CallbackQuery):
 
     await callback_query.message.edit_text("Выберите дату:", reply_markup=calendar_buttons.as_markup())
 
+
 # Обработчик выбора даты
 @dp.callback_query(lambda c: c.data.startswith('date_'))
 async def process_callback_date(callback_query: CallbackQuery):
@@ -402,7 +406,9 @@ async def process_callback_date(callback_query: CallbackQuery):
     hour_buttons.adjust(2)  # Расположение в два столбца
     hour_buttons.row(InlineKeyboardButton(text="Назад", callback_data=f'master_{master}', width=7))
 
-    await callback_query.message.edit_text(f"Вы выбрали дату: {date}. Теперь выберите час:", reply_markup=hour_buttons.as_markup())
+    await callback_query.message.edit_text(f"Вы выбрали дату: {date}. Теперь выберите час:",
+                                           reply_markup=hour_buttons.as_markup())
+
 
 # Обработчик выбора часа
 @dp.callback_query(lambda c: c.data.startswith('hour_'))
@@ -429,7 +435,9 @@ async def process_callback_hour(callback_query: CallbackQuery):
     minute_buttons.adjust(2)  # Расположение в два столбца
     minute_buttons.row(InlineKeyboardButton(text="Назад", callback_data=f'date_{master}_{date}', width=7))
 
-    await callback_query.message.edit_text(f"Вы выбрали час: {hour}:00. Теперь выберите минуты:", reply_markup=minute_buttons.as_markup())
+    await callback_query.message.edit_text(f"Вы выбрали час: {hour}:00. Теперь выберите минуты:",
+                                           reply_markup=minute_buttons.as_markup())
+
 
 # Обработчик выбора времени
 @dp.callback_query(lambda c: c.data.startswith('time_'))
@@ -453,7 +461,8 @@ async def process_callback_time(callback_query: CallbackQuery):
     confirm_menu = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
     ])
-    await callback_query.message.edit_text(f"Запись подтверждена! Мастер: {master}, Дата: {date}, Время: {time}", reply_markup=confirm_menu)
+    await callback_query.message.edit_text(f"Запись подтверждена! Мастер: {master}, Дата: {date}, Время: {time}",
+                                           reply_markup=confirm_menu)
 
 
 # Обработчик нажатия кнопки "Активные записи"
@@ -471,6 +480,7 @@ async def show_active_bookings(callback_query: CallbackQuery):
         await callback_query.message.answer("Нет активных записей.")
     await callback_query.answer()
 
+
 # Обработчик нажатия кнопки "Неактивные записи"
 @dp.callback_query(lambda c: c.data == 'inactive_bookings')
 async def show_inactive_bookings(callback_query: CallbackQuery):
@@ -481,7 +491,6 @@ async def show_inactive_bookings(callback_query: CallbackQuery):
     else:
         await callback_query.message.answer("Нет неактивных записей.")
     await callback_query.answer()
-
 
 
 # Обработчик нажатия кнопки "Отменить"
@@ -497,18 +506,15 @@ async def cancel_booking(callback_query: CallbackQuery):
         await callback_query.answer("Ошибка: запись не найдена.", show_alert=True)
 
 
-
 async def on_startup(dp):
-    # Удаляем вебхук перед началом polling, чтобы исключить конфликт
     create_tables()
     await bot.delete_webhook(drop_pending_updates=True)
     print("Бот запущен без конфликта с вебхуками.")
 
 
-
-
 async def main():
-    await dp.start_polling(bot, on_startup= on_startup)
+    await dp.start_polling(bot, on_startup=on_startup)
+
 
 if __name__ == '__main__':
     asyncio.run(main())

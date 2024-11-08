@@ -1,14 +1,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from config.reader import settings
 
-engine = create_engine('sqlite:///database.db')
+engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+)
 
-session = sessionmaker(bind=engine)
+SessionFactory = sessionmaker(bind=engine)
 
-# Создаем базу для декларативного метода
 Base = declarative_base()
-
-
-def create_tables():
-    Base.metadata.create_all(engine)
-
