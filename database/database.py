@@ -8,6 +8,7 @@ session = sessionmaker(bind=engine)
 # Создаем базу для декларативного метода
 Base = declarative_base()
 
+
 def create_tables():
     Base.metadata.create_all(engine)
 

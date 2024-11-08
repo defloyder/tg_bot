@@ -3,6 +3,7 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from database import *
 
 
+
 # Таблица Юзер
 class User(Base):
     __tablename__ = 'user'
