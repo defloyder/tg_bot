@@ -1,25 +1,33 @@
-import logging
 from aiogram import Bot, Dispatcher
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.types import ContentType
 from datetime import datetime
 from database.tables_creation import create_tables
-import asyncio
-from database.models import User, Master, Record
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config.reader import ADMIN_ID, MASTER_IDS
 from loader import bot, dp
-
+import logging
+from logger_config import logger
+from config.reader import settings
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
 
-# Глобальные переменные для хранения информации о занятых временах и пользователях
 bookings = {}
 masters = {}
 users = set()
 
+async def main():
+    logger.debug("Database start connecting...")
+    logger.success("Database successfully connected!")
+    logger.info("Bot launched successfully.")
+
+    try:
+        await dp.start_polling()
+    finally:
+        await bot.session.close()
 
 # Основное меню
 def main_menu(user_id):
@@ -514,6 +522,8 @@ async def on_startup(dp):
 
 async def main():
     await dp.start_polling(bot, on_startup=on_startup)
+
+
 
 
 if __name__ == '__main__':
