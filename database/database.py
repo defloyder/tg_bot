@@ -3,15 +3,14 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from config.reader import settings
 from logger_config import logger
 
-try:
-    logger.debug("Setting up database connection URL...")
-    engine = create_engine(
-        settings.DATABASE_URL,
-        echo=settings.DEBUG,
-    )
-    logger.success("Database connection URL set successfully.")
-except Exception as e:
-    logger.error(f"Error setting up database connection URL: {e}")
+
+logger.debug("Setting up database connection URL...")
+engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+)
+logger.success("Database connection URL set successfully.")
+
 
 SessionFactory = sessionmaker(bind=engine)
 Base = declarative_base()

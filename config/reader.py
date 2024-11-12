@@ -11,7 +11,7 @@ class EnvBaseSettings(BaseSettings):
         extra = "ignore"
 
 class DBSettings(EnvBaseSettings):
-    DATABASE_URL: str = "sqlite:///./database.db"
+    DATABASE_URL: str = "sqlite:///database.db"
 
 class BotSettings(EnvBaseSettings):
     BOT_TOKEN: SecretStr

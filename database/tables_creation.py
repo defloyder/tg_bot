@@ -4,10 +4,10 @@ from logger_config import logger  # Импортируем настроенны�
 from database.database import Base, engine
 
 def create_tables():
-    logger.debug("Создание таблиц...")
+    logger.debug("Creation...")
     try:
         with engine.begin() as conn:
             Base.metadata.create_all(bind=conn)
-        logger.success("Таблицы успешно созданы.")
+        logger.success("Tables created successfully.")
     except Exception as e:
-        logger.error(f"Ошибка при создании таблиц: {e}")
+        logger.error(f"Table error {e}")

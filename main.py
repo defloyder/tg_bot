@@ -1,33 +1,25 @@
-from aiogram import Bot, Dispatcher
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
-from aiogram.filters import Command
-from aiogram.types import ContentType
-from datetime import datetime
-from database.tables_creation import create_tables
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config.reader import ADMIN_ID, MASTER_IDS
-from loader import bot, dp
-import logging
-from logger_config import logger
-from config.reader import settings
 import asyncio
+import logging
+from datetime import datetime
+
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from Src.Handlers import get_handlers_router
+from config.reader import ADMIN_ID, MASTER_IDS
+from database.database import check_database_connection
+from database.tables_creation import create_tables
+from loader import bot, dp
+from logger_config import logger
 
 logging.basicConfig(level=logging.INFO)
-
 
 bookings = {}
 masters = {}
 users = set()
 
-async def main():
-    logger.debug("Database start connecting...")
-    logger.success("Database successfully connected!")
-    logger.info("Bot launched successfully.")
 
-    try:
-        await dp.start_polling()
-    finally:
-        await bot.session.close()
 
 # Основное меню
 def main_menu(user_id):
@@ -54,13 +46,6 @@ def back_to_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Назад", callback_data="main_menu", width=7)]
     ])
-
-
-# Обработчик команды /start
-@dp.message(Command("start"))
-async def send_welcome(message: Message):
-    user_id = message.from_user.id
-    await message.answer("Добро пожаловать! Нажмите 'Начать' для продолжения.", reply_markup=main_menu(user_id))
 
 
 # Обработчик нажатия кнопки "Начать"
@@ -514,16 +499,23 @@ async def cancel_booking(callback_query: CallbackQuery):
         await callback_query.answer("Ошибка: запись не найдена.", show_alert=True)
 
 
-async def on_startup(dp):
-    create_tables()
+async def on_shutdown():
     await bot.delete_webhook(drop_pending_updates=True)
-    print("Бот запущен без конфликта с вебхуками.")
+    await bot.session.close()
+    logger.debug("Bot session stopped")
+
+async def on_startup():
+    create_tables()
+    dp.include_router(get_handlers_router())
+    logger.debug("Bot session started")
 
 
 async def main():
-    await dp.start_polling(bot, on_startup=on_startup)
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
 
-
+    # Запуск процесса поллинга новых апдейтов
+    await dp.start_polling(bot)
 
 
 if __name__ == '__main__':
