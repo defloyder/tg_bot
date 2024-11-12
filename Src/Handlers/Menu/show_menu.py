@@ -4,7 +4,7 @@ from aiogram.filters import CommandStart
 
 from database.database import SessionFactory
 from database.repository import create_user
-from main import main_menu
+from menu import main_menu
 
 router_show_menu = Router(name="show_menu")
 
