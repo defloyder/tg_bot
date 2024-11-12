@@ -506,7 +506,6 @@ async def on_shutdown():
 
 async def on_startup():
     create_tables()
-    dp.include_router(get_handlers_router())
     logger.debug("Bot session started")
 
 
@@ -514,7 +513,6 @@ async def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
-    # Запуск процесса поллинга новых апдейтов
     await dp.start_polling(bot)
 
 

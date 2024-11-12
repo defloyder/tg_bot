@@ -11,14 +11,14 @@ class User(Base):
     created_at = Column(BigInteger, nullable=False)
     role = Column(String(255), nullable=True)
 
-# # Таблица Record
-# class Booking(Base):
-#     __tablename__ = 'booking'
-#
-#     record_id = Column(Integer, primary_key=True)
-#     record_datetime = Column(DateTime, nullable=True)
-#     # user_id = Column(Integer, ForeignKey('user.id'))
-#     # master_id = Column(Integer, ForeignKey('master.id'))
+# Таблица Record
+class Booking(Base):
+    __tablename__ = 'booking'
+
+    record_id = Column(Integer, primary_key=True)
+    record_datetime = Column(DateTime, nullable=True)
+    # user_id = Column(Integer, ForeignKey('user.id'))
+    # master_id = Column(Integer, ForeignKey('master.id'))
 
 
 # Связь с таблицей "Записи"
