@@ -314,123 +314,6 @@ async def show_all_user_ids(message: Message):
         await message.answer("У вас нет доступа к этой функции.")
 
 
-# Обработчик нажатия кнопки "Записаться"
-@dp.callback_query(lambda c: c.data == 'booking')
-async def process_callback_booking(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id in users:
-        await callback_query.answer("Вы уже осуществили запись.", show_alert=True)
-        return
-    await callback_query.answer()
-    # Меню выбора мастера
-    master_menu = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Арина", callback_data="master_arina"),
-         InlineKeyboardButton(text="Маша", callback_data="master_masha")],
-        [InlineKeyboardButton(text="Назад", callback_data="main_menu", width=7)]
-    ])
-    await callback_query.message.edit_text("Выберите мастера:", reply_markup=master_menu)
-
-
-# Обработчик выбора мастера
-@dp.callback_query(lambda c: c.data.startswith('master_'))
-async def process_callback_master(callback_query: CallbackQuery):
-    master = callback_query.data.split('_')[1]
-    await callback_query.answer()
-
-    now = datetime.now()
-    month_str = now.strftime("%B %Y")
-    current_month = now.month
-
-    calendar_buttons = InlineKeyboardBuilder()
-    # Кнопка с названием месяца занимает всю ширину (ширина = 7)
-    calendar_buttons.add(InlineKeyboardButton(text=month_str, callback_data="ignore", width=7))
-
-    # Добавляем кнопки с числами текущего месяца
-    week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    calendar_buttons.row(*[InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
-    week = []
-
-    for day in range(1, 32):
-        try:
-            date = datetime(now.year, current_month, day)
-            if date.month != current_month:
-                break
-            date_str = date.strftime("%d")
-            callback_data = f'date_{master}_{date.strftime("%d.%m.%Y")}'
-            if callback_data in bookings:
-                week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
-            else:
-                week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
-            if len(week) == 7:
-                calendar_buttons.row(*week)
-                week = []
-        except ValueError:
-            break
-    if week:
-        calendar_buttons.row(*week)
-
-    # Добавляем кнопку "Назад" внизу календаря
-    calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking", width=7))
-
-    await callback_query.message.edit_text("Выберите дату:", reply_markup=calendar_buttons.as_markup())
-
-
-# Обработчик выбора даты
-@dp.callback_query(lambda c: c.data.startswith('date_'))
-async def process_callback_date(callback_query: CallbackQuery):
-    master, date = callback_query.data.split('_')[1], callback_query.data.split('_')[2]
-    user_id = callback_query.from_user.id
-
-    if user_id in users:
-        await callback_query.answer("Вы уже осуществили запись.", show_alert=True)
-        return
-
-    await callback_query.answer()
-
-    # Создаем кнопки для выбора часа
-    hour_buttons = InlineKeyboardBuilder()
-    for hour in range(10, 22):
-        hour_str = f"{hour:02d}:00"
-        callback_data = f'hour_{master}_{date}_{hour:02d}'
-        if callback_data in bookings:
-            hour_buttons.add(InlineKeyboardButton(text=f"{hour_str}❌", callback_data="ignore"))
-        else:
-            hour_buttons.add(InlineKeyboardButton(text=hour_str, callback_data=callback_data))
-    hour_buttons.adjust(2)  # Расположение в два столбца
-    hour_buttons.row(InlineKeyboardButton(text="Назад", callback_data=f'master_{master}', width=7))
-
-    await callback_query.message.edit_text(f"Вы выбрали дату: {date}. Теперь выберите час:",
-                                           reply_markup=hour_buttons.as_markup())
-
-
-# Обработчик выбора часа
-@dp.callback_query(lambda c: c.data.startswith('hour_'))
-async def process_callback_hour(callback_query: CallbackQuery):
-    data = callback_query.data.split('_')
-    master, date, hour = data[1], data[2], data[3]
-    user_id = callback_query.from_user.id
-
-    if user_id in users:
-        await callback_query.answer("Вы уже осуществили запись.", show_alert=True)
-        return
-
-    await callback_query.answer()
-
-    # Создаем кнопки для выбора минут
-    minute_buttons = InlineKeyboardBuilder()
-    for minute in [0, 15, 30, 45]:
-        minute_str = f"{hour}:{minute:02d}"
-        callback_data = f'time_{master}_{date}_{minute_str}'
-        if callback_data in bookings:
-            minute_buttons.add(InlineKeyboardButton(text=f"{minute_str}❌", callback_data="ignore"))
-        else:
-            minute_buttons.add(InlineKeyboardButton(text=minute_str, callback_data=callback_data))
-    minute_buttons.adjust(2)  # Расположение в два столбца
-    minute_buttons.row(InlineKeyboardButton(text="Назад", callback_data=f'date_{master}_{date}', width=7))
-
-    await callback_query.message.edit_text(f"Вы выбрали час: {hour}:00. Теперь выберите минуты:",
-                                           reply_markup=minute_buttons.as_markup())
-
 
 # Обработчик выбора времени
 @dp.callback_query(lambda c: c.data.startswith('time_'))
@@ -506,6 +389,7 @@ async def on_shutdown():
 
 async def on_startup():
     create_tables()
+    dp.include_router(get_handlers_router())
     logger.debug("Bot session started")
 
 
@@ -513,6 +397,7 @@ async def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
+    # Запуск процесса поллинга новых апдейтов
     await dp.start_polling(bot)
 
 

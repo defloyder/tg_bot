@@ -2,6 +2,8 @@ import time
 
 from aiogram import types
 from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.orm import Session
+from datetime import datetime
 
 from database import User
 from database import Booking
@@ -44,83 +46,11 @@ def update_user_username(session, user_id, new_nickname):
 
 
 def delete_user(session, user_id):
-    user = session.query(User).filter(User.user_id == user_id).first()
+    user = session.query(User).filter(User.id == user_id).first()
     if user:
         session.delete(user)
         session.commit()
     return user
-
-
-from database.database import SessionFactory
-from logger_config import logger
-
-
-def create_record(session, datetime_value):
-    try:
-        # Создание новой записи без использования user_id и master_id
-        new_record = Booking(record_datetime=datetime_value)
-
-        # Добавление записи в сессию
-        session.add(new_record)
-
-        # Фиксация изменений в базе
-        session.commit()
-
-        # Логирование успешной записи
-        logger.info(f"Запись создана: {new_record}")
-        return new_record
-    except Exception as e:
-        # Логирование ошибок
-        logger.error(f"Ошибка при создании записи: {e}")
-        session.rollback()  # Откатываем изменения в случае ошибки
-        return None
-
-
-def get_record_by_id(session, record_id):
-    try:
-        record = session.query(Booking).filter(Booking.record_id == record_id).first()
-        return record
-    except Exception as e:
-        logger.error(f"Error fetching record by ID: {e}")
-        return None
-
-def get_all_records(session):
-    try:
-        records = session.query(Booking).all()
-        return records
-    except Exception as e:
-        logger.error(f"Error fetching all records: {e}")
-        return []
-
-def update_record_datetime(session, record_id, new_datetime):
-    try:
-        record = session.query(Booking).filter(Booking.record_id == record_id).first()
-        if record:
-            record.record_datetime = new_datetime
-            session.commit()
-            logger.debug(f"Record updated successfully: ID {record_id}")
-            return record
-        logger.warning(f"Record not found: ID {record_id}")
-        return None
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error updating record: {e}")
-        return None
-
-def delete_record(session, record_id):
-    try:
-        record = session.query(Booking).filter(Booking.record_id == record_id).first()
-        if record:
-            session.delete(record)
-            session.commit()
-            logger.debug(f"Record deleted successfully: ID {record_id}")
-            return True
-        logger.warning(f"Record not found for deletion: ID {record_id}")
-        return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"Error deleting record: {e}")
-        return False
 
 #
 # def create_master(session, name, description=None, photo=None):
@@ -155,3 +85,69 @@ def delete_record(session, record_id):
 #     return master
 #
 #
+def create_record(session: Session, datetime_value: str):
+    try:
+        # Преобразуем строку в datetime объект
+        booking_datetime = datetime.strptime(datetime_value, '%d.%m.%Y %H:%M')
+
+        # Создаем новый объект Booking
+        new_record = Booking(
+            booking_datetime=booking_datetime  # убедитесь, что используете правильное поле
+        )
+
+        # Добавляем в сессию и сохраняем
+        session.add(new_record)
+        session.commit()
+        logger.info(f"Запись успешно добавлена в базу данных: {new_record}")
+        return new_record
+
+    except Exception as e:
+        session.rollback()  # откатываем транзакцию в случае ошибки
+        logger.error(f"Ошибка при создании записи: {e}")
+        return None
+
+
+def get_record_by_id(session: Session, record_id: int):
+    try:
+        return session.query(Booking).filter(Booking.id == record_id).first()
+    except Exception as e:
+        logger.error(f"Ошибка при получении записи с ID {record_id}: {e}")
+        return None
+
+
+def update_record_datetime(session: Session, record_id: int, new_datetime: str):
+    try:
+        # Преобразуем строку в datetime объект
+        updated_datetime = datetime.strptime(new_datetime, '%d.%m.%Y %H:%M')
+
+        # Ищем запись
+        record = session.query(Booking).filter(Booking.id == record_id).first()
+
+        if record:
+            # Обновляем дату и время записи
+            record.booking_datetime = updated_datetime
+            session.commit()  # Сохраняем изменения
+            return record
+        else:
+            return None
+    except Exception as e:
+        session.rollback()  # откатываем транзакцию в случае ошибки
+        logger.error(f"Ошибка при обновлении записи с ID {record_id}: {e}")
+        return None
+
+
+def delete_record(session: Session, record_id: int):
+    try:
+        # Ищем запись
+        record = session.query(Booking).filter(Booking.id == record_id).first()
+
+        if record:
+            session.delete(record)
+            session.commit()  # Сохраняем изменения
+            return record
+        else:
+            return None
+    except Exception as e:
+        session.rollback()  # откатываем транзакцию в случае ошибки
+        logger.error(f"Ошибка при удалении записи с ID {record_id}: {e}")
+        return None

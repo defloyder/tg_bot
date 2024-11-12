@@ -1,27 +1,20 @@
-# logger_config.py
-
 import logging
 import colorlog
 
-# Уровень SUCCESS, между INFO и WARNING
 SUCCESS_LEVEL_NUM = 25
 logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
 
-# Метод для уровня SUCCESS
 def success(self, message, *args, **kws):
     if self.isEnabledFor(SUCCESS_LEVEL_NUM):
         self._log(SUCCESS_LEVEL_NUM, message, args, **kws)
 
-# Добавляем метод success в класс Logger
 logging.Logger.success = success
 
-# Формат логирования
 log_format = (
     "%(log_color)s%(asctime)s | %(levelname)-8s | "
     "%(name)s:%(module)s:%(lineno)d - %(message)s"
 )
 
-# Настройка цветного форматирования
 color_formatter = colorlog.ColoredFormatter(
     log_format,
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -35,10 +28,15 @@ color_formatter = colorlog.ColoredFormatter(
     },
 )
 
-# Настройка основного логгера
-handler = logging.StreamHandler()
-handler.setFormatter(color_formatter)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(color_formatter)
+
+file_handler = logging.FileHandler('app.log', encoding='utf-8')
+file_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)-8s | %(message)s'))
 
 logger = logging.getLogger()
-logger.addHandler(handler)
-logger.setLevel(logging.DEBUG)  # Установите уровень логирования
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+logger.setLevel(logging.DEBUG)
+
+logger.success("This is a success log message.")
