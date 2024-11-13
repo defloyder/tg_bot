@@ -27,5 +27,5 @@ def admin_panel():
         [InlineKeyboardButton(text="Редактировать мастера", callback_data="edit_master")],
         [InlineKeyboardButton(text="Удалить мастера", callback_data="delete_master")],
         [InlineKeyboardButton(text="Редактировать прайс-лист", callback_data="edit_price_list")],
-        [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text="Назад", callback_data="main_menu")]
     ])
