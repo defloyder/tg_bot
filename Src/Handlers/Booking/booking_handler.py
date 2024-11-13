@@ -1,101 +1,133 @@
 from aiogram import Router
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from datetime import datetime
-from Src.Handlers.Booking.service import generate_calendar
+from Src.Handlers.Booking.service import generate_calendar  # Убедитесь, что это правильно настроено
 from database import Booking, Master
 from database.database import SessionFactory
-from database.repository import create_record
 from logger_config import logger
 from menu import ADMIN_ID
 
 router_booking = Router(name="booking")
 
-# Обработчик нажатия кнопки "Записаться"
+# Обработчик кнопки "Записаться"
 @router_booking.callback_query(lambda c: c.data == 'booking')
 async def process_callback_booking(callback_query: CallbackQuery):
-    logger.info("Обработчик нажатия кнопки 'Записаться' запущен.")
-    await callback_query.answer()
-
-    master_menu = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Арина", callback_data="master_1"),
-         InlineKeyboardButton(text="Маша", callback_data="master_2")],
-        [InlineKeyboardButton(text="Назад", callback_data="main_menu")]
-    ])
-    await callback_query.message.edit_text("Выберите мастера:", reply_markup=master_menu)
-    logger.debug("Отправлено меню с выбором мастера.")
-
-@router_booking.callback_query(lambda c: c.data.startswith('master_'))
-async def process_callback_master(callback_query: CallbackQuery):
-    master_id = callback_query.data.split('_')[1]  # Получаем ID мастера
-    logger.debug(f"Пользователь выбрал мастера с ID: {master_id}")
+    logger.info("Обработчик кнопки 'Записаться' запущен.")
     await callback_query.answer()
 
     try:
-        # Получаем информацию о мастере из базы данных
+        # Получаем список мастеров из базы данных
+        with SessionFactory() as session:
+            masters = session.query(Master).all()
+
+        if masters:
+            buttons = [
+                [InlineKeyboardButton(text=master.master_name, callback_data=f"booking_master_{master.master_id}")]
+                for master in masters
+            ]
+            buttons.append([InlineKeyboardButton(text="Назад", callback_data="main_menu")])  # Кнопка назад
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+            await callback_query.message.edit_text("Выберите мастера для записи:", reply_markup=keyboard)
+            logger.debug("Отправлено меню выбора мастеров для записи.")
+        else:
+            await callback_query.message.edit_text("Нет доступных мастеров для записи.")
+            logger.warning("Список мастеров пуст.")
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка мастеров: {e}")
+        await callback_query.answer("Произошла ошибка при получении списка мастеров.", show_alert=True)
+
+# Обработчик выбора мастера
+@router_booking.callback_query(lambda c: c.data.startswith('booking_master_'))
+async def process_booking_master(callback_query: CallbackQuery):
+    try:
+        master_id = int(callback_query.data.split('_')[-1])  # Приводим master_id к числу
+        logger.info(f"Пользователь выбрал мастера с ID {master_id} для записи.")
+        await callback_query.answer()
+
         with SessionFactory() as session:
             master = session.query(Master).filter(Master.master_id == master_id).first()
 
-        if master:
-            # Формируем сообщение с информацией о мастере
-            message = f"Информация о мастере {master.master_name}:\n\n" \
-                      f"Описание: {master.master_description}\n"
+            if not master:
+                logger.error(f"Мастер с ID {master_id} не найден в базе данных.")
+                await callback_query.message.edit_text("Мастер не найден. Попробуйте снова.")
+                return
 
-            if master.master_photo:  # Если есть фото
-                # Проверяем, если это ID изображения в Telegram
-                if master.master_photo.startswith("AgACAgIAAxkBAA"):  # ID фотографии Telegram
-                    await callback_query.message.answer_photo(master.master_photo, caption=message)
-                else:  # Если это URL
-                    message += f"Фото: {master.master_photo}"  # Предположим, что это URL фото
-                    await callback_query.message.edit_text(message)
-            else:
-                message += "Фото: Нет фото"
-                await callback_query.message.edit_text(message)
-
-            # Кнопки для выбора времени (или можно добавить другую логику, если хотите)
-            time_button = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="Выбрать время", callback_data=f"choose_time_{master_id}")],
-                [InlineKeyboardButton(text="Назад", callback_data="main_menu")]
-            ])
-            # Отправляем информацию о мастере
-            logger.debug(f"Отправлена информация о мастере {master.master_name}")
-        else:
-            await callback_query.message.edit_text("Мастер не найден.")
-            logger.warning(f"Мастер с ID {master_id} не найден.")
+        # Генерация календаря для выбранного мастера
+        calendar_markup = await generate_calendar(master_id=master_id)
+        await callback_query.message.edit_text(
+            f"Выберите дату для записи к мастеру {master.master_name}:",
+            reply_markup=calendar_markup
+        )
+        logger.debug(f"Календарь для мастера {master.master_name} успешно отправлен.")
+    except ValueError:
+        logger.error(f"Ошибка преобразования master_id: {callback_query.data.split('_')[-1]}")
+        await callback_query.message.edit_text("Ошибка в данных мастера. Попробуйте снова.")
     except Exception as e:
-        logger.error(f"Ошибка при получении информации о мастере {master_id}: {e}")
-        await callback_query.answer("Произошла ошибка при получении информации о мастере.", show_alert=True)
+        logger.error(f"Ошибка при обработке выбора мастера: {e}")
+        await callback_query.answer("Произошла ошибка при обработке мастера. Попробуйте позже.", show_alert=True)
 
-# Обработчик выбора времени для записи
-@router_booking.callback_query(lambda c: c.data.startswith('time_'))
-async def process_callback_time(callback_query: CallbackQuery):
+# Обработчик выбора даты
+@router_booking.callback_query(lambda c: c.data.startswith('date_'))
+async def process_booking_date(callback_query: CallbackQuery):
     data = callback_query.data.split('_')
-    master_id, date, time = data[1], data[2], data[3]
-    logger.debug(f"Пользователь выбрал время для записи: {date} {time}, мастер ID: {master_id}")
+    master_id = data[1]
+    selected_date = data[2]
+    logger.info(f"Пользователь выбрал дату {selected_date} для мастера ID {master_id}.")
     await callback_query.answer()
 
-    datetime_value = f"{date} {time}"
+    try:
+        # Кнопки для выбора времени
+        time_buttons = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="10:00", callback_data=f"time_{master_id}_{selected_date}_10:00"),
+             InlineKeyboardButton(text="11:00", callback_data=f"time_{master_id}_{selected_date}_11:00")],
+            [InlineKeyboardButton(text="14:00", callback_data=f"time_{master_id}_{selected_date}_14:00"),
+             InlineKeyboardButton(text="15:00", callback_data=f"time_{master_id}_{selected_date}_15:00")],
+            [InlineKeyboardButton(text="Назад", callback_data=f"booking_master_{master_id}")]
+        ])
+
+        await callback_query.message.edit_text(
+            f"Выберите время для записи с мастером ID {master_id} на {selected_date}:",
+            reply_markup=time_buttons
+        )
+        logger.debug(f"Время для мастера ID {master_id} на {selected_date} предложено.")
+    except Exception as e:
+        logger.error(f"Ошибка при обработке выбора даты {selected_date} для мастера ID {master_id}: {e}")
+        await callback_query.answer("Произошла ошибка при выборе времени.", show_alert=True)
+
+# Обработчик выбора времени
+@router_booking.callback_query(lambda c: c.data.startswith('time_'))
+async def process_booking_time(callback_query: CallbackQuery):
+    data = callback_query.data.split('_')
+    master_id, selected_date, selected_time = data[1], data[2], data[3]
+    datetime_value = f"{selected_date} {selected_time}"
+    logger.info(f"Пользователь выбрал время {datetime_value} для мастера ID {master_id}.")
+    await callback_query.answer()
+
     try:
         with SessionFactory() as session:
+            # Проверка занятости времени
             existing_record = session.query(Booking).filter_by(
-                booking_datetime=datetime_value,
+                booking_datetime=datetime.strptime(datetime_value, "%Y-%m-%d %H:%M"),
                 master=master_id
             ).first()
 
             if existing_record:
                 await callback_query.answer("Это время уже занято.", show_alert=True)
-                logger.debug(f"Время {datetime_value} уже занято.")
+                logger.debug(f"Время {datetime_value} для мастера ID {master_id} занято.")
                 return
 
-            # Создаем запись в базе данных
-            new_record = create_record(session=session, datetime_value=datetime_value, master=master_id)
-            if not new_record:
-                await callback_query.answer("Произошла ошибка при записи.", show_alert=True)
-                logger.error(f"Ошибка при создании записи для {datetime_value}.")
-                return
-
+            # Создаем запись
+            new_record = Booking(
+                booking_datetime=datetime.strptime(datetime_value, "%Y-%m-%d %H:%M"),
+                master=master_id
+            )
+            session.add(new_record)
+            session.commit()
             logger.info(f"Запись успешно создана: {new_record}")
+
     except Exception as e:
-        logger.error(f"Ошибка при записи на {datetime_value}: {e}")
+        logger.error(f"Ошибка при записи на {datetime_value} для мастера ID {master_id}: {e}")
         await callback_query.answer("Произошла ошибка при записи.", show_alert=True)
         return
 
@@ -104,38 +136,36 @@ async def process_callback_time(callback_query: CallbackQuery):
         [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
     ])
     await callback_query.message.edit_text(
-        f"Запись подтверждена!\nМастер: {master_id}\nДата: {date}\nВремя: {time}",
+        f"Запись подтверждена!\nМастер ID: {master_id}\nДата: {selected_date}\nВремя: {selected_time}",
         reply_markup=confirm_menu
     )
-    logger.debug(f"Подтверждение записи отправлено: мастер ID {master_id}, дата {date}, время {time}.")
+    logger.debug(f"Подтверждение записи отправлено: мастер ID {master_id}, дата {selected_date}, время {selected_time}.")
 
-# Обработчик отображения списка мастеров для админа
+# Обработчик кнопки "Информация о мастерах"
 @router_booking.callback_query(lambda c: c.data == "masters")
 async def show_masters_list(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id == ADMIN_ID:
-        await callback_query.answer()
+    logger.info("Обработчик нажатия кнопки 'Информация о мастерах' запущен.")
+    await callback_query.answer()
 
-        # Получаем всех мастеров из базы данных
+    try:
         with SessionFactory() as session:
-            masters = session.query(Master).all()  # Запрос на получение всех мастеров
+            masters = session.query(Master).all()  # Получение всех мастеров из базы данных
 
-        # Если мастера есть
         if masters:
             buttons = [
-                [InlineKeyboardButton(text=master.master_name, callback_data=f"master_{master.master_id}") for master in
-                 masters]
+                [InlineKeyboardButton(text=master.master_name, callback_data=f"master_{master.master_id}")]
+                for master in masters
             ]
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            # Отправляем список мастеров
             await callback_query.message.edit_text(
                 "Выберите мастера, чтобы узнать подробности:",
                 reply_markup=keyboard
             )
+            logger.debug("Отправлен список мастеров.")
         else:
             await callback_query.message.edit_text("Нет доступных мастеров.")
-            logger.warning(f"Администратор {user_id} запросил список мастеров, но их нет в базе.")
-    else:
-        await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
-        logger.warning(f"Пользователь {user_id} попытался получить информацию о мастерах.")
+            logger.warning("Список мастеров пуст.")
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка мастеров: {e}")
+        await callback_query.answer("Произошла ошибка при получении списка мастеров.", show_alert=True)

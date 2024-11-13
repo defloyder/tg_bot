@@ -1,9 +1,11 @@
-from datetime import datetime, timedelta
-from aiogram.types import InlineKeyboardButton
+from aiogram import Router
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from datetime import datetime
 
 from database import Booking
 from database.database import SessionFactory
+from database.repository import create_record
 from logger_config import logger
 
 
@@ -21,40 +23,36 @@ async def generate_calendar(master: str):
     calendar_buttons.row(*[InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
 
     week = []
-
-    # Подготовка списка всех занятых дат для мастера
-    try:
-        with SessionFactory() as session:
-            # Выбираем занятые даты и часы из базы для текущего мастера
-            busy_dates = session.query(Booking.booking_datetime).filter(Booking.master == master).all()
-            busy_days_set = {datetime.strptime(record.booking_datetime, '%Y-%m-%d %H:%M').date() for record in busy_dates}
-    except Exception as e:
-        logger.error(f"Ошибка при запросе занятых дат для мастера {master}: {e}")
-        busy_days_set = set()
-
-    for day in range(1, 32):  # Проходим по всем дням месяца
+    for day in range(1, 32):
         try:
             date = datetime(now.year, current_month, day)
-            if date.month != current_month:  # Если месяц изменился, прекращаем цикл
+            if date.month != current_month:
                 break
             date_str = date.strftime("%d")
             callback_data = f'date_{master}_{date.strftime("%d.%m.%Y")}'
+            logger.debug(f"Проверяем занятость даты {date_str} для мастера {master}.")  # Логирование
 
-            if date.date() in busy_days_set:  # Проверяем, занята ли дата
-                week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore", disabled=True))
-                logger.info(f"Дата {date_str} уже занята.")
+            # Проверяем занятость даты в базе
+            with SessionFactory() as session:
+                existing_record = session.query(Booking).filter_by(
+                    booking_datetime=date.strftime('%Y-%m-%d')
+                ).first()
+
+            if existing_record:
+                week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
+                logger.info(f"Дата {date_str} уже занята.")  # Логирование
             else:
                 week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
-                logger.info(f"Дата {date_str} доступна.")
+                logger.info(f"Дата {date_str} доступна.")  # Логирование
 
-            if len(week) == 7:  # Завершаем строку, когда набрано 7 дней
+            if len(week) == 7:
                 calendar_buttons.row(*week)
                 week = []
         except ValueError:
-            logger.warning(f"Ошибка при обработке дня {day}. Возможно, этого дня нет в месяце.")
+            logger.warning(f"Ошибка при обработке дня {day}. Возможно, этого дня нет в месяце.")  # Логирование
             break
 
-    if week:  # Добавляем оставшиеся дни в последнюю строку
+    if week:
         calendar_buttons.row(*week)
 
     calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking", width=7))
