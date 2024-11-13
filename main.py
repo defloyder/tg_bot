@@ -2,21 +2,29 @@ import asyncio
 import logging
 from datetime import datetime
 
-from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from Src.Handlers import get_handlers_router
 from config.reader import ADMIN_ID, MASTER_IDS
-from database.database import check_database_connection
 from database.tables_creation import create_tables
 from loader import bot, dp
 from logger_config import logger
+from menu import admin_panel
 
 logging.basicConfig(level=logging.INFO)
-
-
 #
+# # Обработчик нажатия кнопки "Админ панель"
+# @dp.callback_query(lambda c: c.data == "admin_panel")
+# async def process_callback_admin_panel(callback_query: CallbackQuery):
+#     user_id = callback_query.from_user.id
+#     if user_id == ADMIN_ID:
+#         await callback_query.answer()
+#         await callback_query.message.edit_text("Административная панель:", reply_markup=admin_panel())
+#         logger.info(f"Администратор {user_id} открыл административную панель.")
+#     else:
+#         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
+#         logger.warning(f"Пользователь {user_id} попытался открыть административную панель.")
+# #
 # # Основное меню
 # def main_menu(user_id):
 #     buttons = [
@@ -52,131 +60,17 @@ logging.basicConfig(level=logging.INFO)
 #     await callback_query.message.edit_text("Выберите действие:", reply_markup=main_menu(user_id))
 #
 #
-# Обработчик вызова админ панели
-@dp.callback_query(lambda c: c.data == 'admin_panel')
-async def process_callback_admin_panel(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id == ADMIN_ID:
-        await callback_query.answer()
-        await callback_query.message.edit_text("Административная панель:", reply_markup=admin_panel())
-    else:
-        await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
+# @dp.callback_query(lambda c: c.data == 'admin_panel')
+# async def process_callback_admin_panel(callback_query: CallbackQuery):
+#     user_id = callback_query.from_user.id
+#     if user_id == ADMIN_ID:
+#         await callback_query.answer()
+#         await callback_query.message.edit_text("Административная панель:", reply_markup=admin_panel())
+#     else:
+#         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
 
 
-def admin_panel():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Активные записи", callback_data="active_bookings")],
-        [InlineKeyboardButton(text="Неактивные записи", callback_data="inactive_bookings")],
-        [InlineKeyboardButton(text="Добавить мастера", callback_data="add_master")],
-        [InlineKeyboardButton(text="Редактировать мастера", callback_data="edit_master_info")],
-        [InlineKeyboardButton(text="Удалить мастера", callback_data="delete_master")],
-        [InlineKeyboardButton(text="Редактировать прайс-лист", callback_data="edit_price_list")],
-        [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]
-    ])
 
-#
-# # Обработчик вызова редактирования информации о мастерах
-# @dp.callback_query(lambda c: c.data == 'edit_masters_info')
-# async def process_callback_edit_masters_info(callback_query: CallbackQuery):
-#     await callback_query.answer()
-#     await callback_query.message.edit_text(
-#         "Введите информацию о мастерах командой /add_masters_info в формате:\nИмя, Описание\nПовторите для каждого мастера.")
-#     bookings['awaiting_masters_info'] = True  # Устанавливаем флаг ожидания информации о мастерах
-#
-#
-# # Обработчик для добавления информации о мастерах
-# @dp.message(Command("add_masters_info"))
-# async def add_masters_info(message: Message):
-#     if bookings.get('awaiting_masters_info'):
-#         try:
-#             master_info = message.text
-#             if 'masters_info' not in bookings:
-#                 bookings['masters_info'] = []
-#             bookings['masters_info'].append(master_info)
-#             await message.answer("Информация о мастере добавлена. Введите следующего мастера или завершите добавление.")
-#         except Exception as e:
-#             await message.answer("Ошибка при добавлении информации о мастере. Попробуйте снова.")
-#     else:
-#         await message.answer("Для начала редактирования используйте кнопку в админ панели.")
-#
-#
-# # Обработчик для отображения информации о мастерах
-# @dp.callback_query(lambda c: c.data == 'masters')
-# async def show_masters(callback_query: CallbackQuery):
-#     master_buttons = [[InlineKeyboardButton(text=name, callback_data=f"show_master_{name}")] for name in masters]
-#     master_buttons.append([InlineKeyboardButton(text="Назад", callback_data="main_menu")])
-#     markup = InlineKeyboardMarkup(inline_keyboard=master_buttons)
-#
-#     await callback_query.answer()
-#
-#     # Проверка, можно ли отредактировать сообщение, если оно существует
-#     if callback_query.message and callback_query.message.text:
-#         await callback_query.message.edit_text("Выберите мастера для просмотра информации:", reply_markup=markup)
-#     else:
-#         await bot.send_message(callback_query.message.chat.id, "Выберите мастера для просмотра информации:",
-#                                reply_markup=markup)
-#
-#
-# # Обработчик для отображения информации выбранного мастера
-# @dp.callback_query(lambda c: c.data.startswith('show_master_'))
-# async def show_selected_master(callback_query: CallbackQuery):
-#     master_name = callback_query.data.split('_')[-1]
-#     master_info = masters[master_name]
-#     description = master_info["description"] or "Описание пока не добавлено."
-#     photo_file_id = master_info["photo"]
-#     markup = InlineKeyboardMarkup(inline_keyboard=[
-#         [InlineKeyboardButton(text="Назад", callback_data="masters")]
-#     ])
-#     await callback_query.answer()
-#     if photo_file_id:
-#         await bot.send_photo(chat_id=callback_query.message.chat.id, photo=photo_file_id,
-#                              caption=f"{master_name}\n\n{description}", reply_markup=markup)
-#     else:
-#         await bot.send_message(chat_id=callback_query.message.chat.id, text=f"{master_name}\n\n{description}",
-#                                reply_markup=markup)
-#     await callback_query.message.delete()
-#
-#
-# # Обработчик вызова добавления мастера
-# @dp.callback_query(lambda c: c.data == 'add_master')
-# async def process_callback_add_master(callback_query: CallbackQuery):
-#     await callback_query.answer()
-#     await callback_query.message.edit_text("Введите имя мастера:")
-#     bookings['awaiting_master_name'] = True  # Устанавливаем флаг ожидания имени мастера
-#
-#
-# # Обработчик для добавления имени мастера
-# @dp.message(lambda message: bookings.get('awaiting_master_name'))
-# async def add_master_name(message: Message):
-#     master_name = message.text
-#     masters[master_name] = {"description": "", "photo": ""}
-#     bookings.pop('awaiting_master_name')
-#     bookings['awaiting_master_description'] = master_name
-#     await message.answer(f"Мастер {master_name} добавлен. Введите описание мастера:")
-#
-#
-# # Обработчик для добавления описания мастера
-# @dp.message(lambda message: 'awaiting_master_description' in bookings)
-# async def add_master_description(message: Message):
-#     master_name = bookings['awaiting_master_description']
-#     description = message.text
-#     masters[master_name]["description"] = description
-#     bookings.pop('awaiting_master_description')
-#     bookings['awaiting_master_photo'] = master_name
-#     await message.answer(f"Описание для мастера {master_name} добавлено. Теперь загрузите фото.")
-#
-#
-# # Обработчик для загрузки фото мастера
-# @dp.message(lambda message: message.photo and 'awaiting_master_photo' in bookings)
-# async def handle_master_photo(message: Message):
-#     master_name = bookings.pop('awaiting_master_photo')
-#     if master_name in masters:
-#         photo_file_id = message.photo[-1].file_id
-#         masters[master_name]["photo"] = photo_file_id
-#         await message.answer(f"Фото для мастера {master_name} добавлено.")
-#     else:
-#         await message.answer("Ошибка при добавлении фото. Попробуйте снова.")
-#
 #
 # # Обработчик для отображения прайс-листа
 # @dp.callback_query(lambda c: c.data == 'price_list')

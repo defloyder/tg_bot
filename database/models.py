@@ -20,17 +20,13 @@ class Booking(Base):
     booking_id = Column(Integer, primary_key=True)
     booking_datetime = Column(DateTime, nullable=True)
 
-#
-# # Таблица Master
-# class Master(Base):
-#     __tablename__ = 'master'
-#
-#     id = Column(Integer, primary_key=True)
-#     name = Column(String(255), nullable=True)
-#     description = Column(String(255), nullable=True)
-#     photo = Column(String(255), nullable=True)
-#
-#     # Связь с таблицей "Записи"
-#     records = relationship("Record", back_populates="master")
-#
+
+# Таблица Master
+class Master(Base):
+    __tablename__ = 'master'
+
+    master_id = Column(Integer, primary_key=True)
+    master_name = Column(String(255), nullable=True)
+    master_description = Column(String(255), nullable=True)
+    master_photo = Column(String(255), nullable=True)
 
