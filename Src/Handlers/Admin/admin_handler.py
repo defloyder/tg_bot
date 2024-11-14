@@ -26,7 +26,6 @@ async def process_callback_admin_panel(callback_query: CallbackQuery):
 async def main_menu_handler(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
 
-    # Проверяем, является ли пользователь администратором или обычным пользователем
     if user_id == ADMIN_ID:
         await callback_query.answer()
         await callback_query.message.edit_text(
