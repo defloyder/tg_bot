@@ -1,17 +1,17 @@
-from datetime import datetime, timedelta
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
+from datetime import datetime
 from database import Booking
 from database.database import SessionFactory
+from database.repository import get_booked_dates_for_master
 from logger_config import logger
 
-
 # Генерация календаря для выбора даты
-async def generate_calendar(master: str):
+async def generate_calendar(master_id: int):
     now = datetime.now()
     month_str = now.strftime("%B %Y")
     current_month = now.month
+    current_day = now.day  # Текущий день месяца
 
     calendar_buttons = InlineKeyboardBuilder()
     calendar_buttons.add(InlineKeyboardButton(text=month_str, callback_data="ignore", width=7))
@@ -26,21 +26,29 @@ async def generate_calendar(master: str):
     try:
         with SessionFactory() as session:
             # Выбираем занятые даты и часы из базы для текущего мастера
-            busy_dates = session.query(Booking.booking_datetime).filter(Booking.master == master).all()
-            busy_days_set = {datetime.strptime(record.booking_datetime, '%Y-%m-%d %H:%M').date() for record in busy_dates}
+            busy_dates = await get_booked_dates_for_master(session, master_id)
+            logger.debug(f"Занятые даты для мастера {master_id}: {busy_dates}")
     except Exception as e:
-        logger.error(f"Ошибка при запросе занятых дат для мастера {master}: {e}")
-        busy_days_set = set()
+        logger.error(f"Ошибка при запросе занятых дат для мастера {master_id}: {e}")
+        busy_dates = set()
 
     for day in range(1, 32):  # Проходим по всем дням месяца
         try:
             date = datetime(now.year, current_month, day)
-            if date.month != current_month:  # Если месяц изменился, прекращаем цикл
-                break
-            date_str = date.strftime("%d")
-            callback_data = f'date_{master}_{date.strftime("%d.%m.%Y")}'
 
-            if date.date() in busy_days_set:  # Проверяем, занята ли дата
+            # Если месяц изменился, прекращаем цикл
+            if date.month != current_month:
+                break
+
+            # Блокируем прошедшие дни
+            if date.date() < now.date():  # Если день в прошлом
+                week.append(InlineKeyboardButton(text=f"{day}❌", callback_data="ignore", disabled=True))
+                continue
+
+            date_str = date.strftime("%d")
+            callback_data = f'date_{master_id}_{date.strftime("%d.%m.%Y")}'
+
+            if date.date() in busy_dates:  # Проверяем, занята ли дата
                 week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore", disabled=True))
                 logger.info(f"Дата {date_str} уже занята.")
             else:
@@ -57,5 +65,7 @@ async def generate_calendar(master: str):
     if week:  # Добавляем оставшиеся дни в последнюю строку
         calendar_buttons.row(*week)
 
+    # Кнопка "Назад" для перехода к предыдущему меню
     calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking", width=7))
+
     return calendar_buttons.as_markup()

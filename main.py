@@ -1,15 +1,11 @@
 import asyncio
 import logging
-from datetime import datetime
-
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 
 from Src.Handlers import get_handlers_router
-from config.reader import ADMIN_ID, MASTER_IDS
+from Src.Handlers.Booking.booking_handler import scheduler
 from database.tables_creation import create_tables
 from loader import bot, dp
 from logger_config import logger
-from menu import admin_panel
 
 logging.basicConfig(level=logging.INFO)
 #
@@ -290,6 +286,6 @@ async def main():
     # Запуск процесса поллинга новых апдейтов
     await dp.start_polling(bot)
 
-
 if __name__ == '__main__':
-    asyncio.run(main())
+    scheduler.start()
+    asyncio.run(main())  # Это важно!

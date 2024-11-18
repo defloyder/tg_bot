@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
 ADMIN_ID = 475953677
-MASTER_IDS = {'6754920583'}
+# MASTER_IDS = {'6754920583'}
 
 class EnvBaseSettings(BaseSettings):
     class Config:

@@ -321,19 +321,13 @@ async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMConte
             f"Пользователь {callback_query.from_user.id} пытался удалить мастера, но не является администратором.")
 
 
-# Обработчик для кнопки "Назад" (в любом месте, где нужно вернуться в главное меню)
 @router_master.callback_query(lambda c: c.data == "main_menu")
 async def back_to_main_menu(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
 
-    # Отправляем главное меню
-    keyboard = main_menu(user_id)  # Получаем кнопки главного меню
-
-    # Редактируем сообщение с кнопками главного меню
+    keyboard = main_menu(user_id)
     await callback_query.message.edit_text("Главное меню:", reply_markup=keyboard)
 
-
-# Обработчик для отображения мастеров с кнопкой "Назад"
 @router_master.callback_query(lambda c: c.data == "masters")
 async def show_masters_list(callback_query: CallbackQuery):
     with SessionFactory() as session:
@@ -341,18 +335,13 @@ async def show_masters_list(callback_query: CallbackQuery):
 
     if masters:
         buttons = [
-            [InlineKeyboardButton(text=master.master_name, callback_data=f"master_info_{master.master_id}") for master
-             in masters]
+            [InlineKeyboardButton(text=master.master_name, callback_data=f"info_master_{master.master_id}")]
+            for master in masters
         ]
-        # Добавляем кнопку "Назад" в конец списка
         buttons.append([InlineKeyboardButton(text="Назад", callback_data="main_menu")])
-
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
-
-        # Проверяем, есть ли текст в сообщении
         if callback_query.message.text:
             try:
-                # Если текст есть, редактируем его
                 await callback_query.message.edit_text(
                     "Выберите мастера, чтобы узнать подробности:",
                     reply_markup=keyboard
@@ -362,7 +351,6 @@ async def show_masters_list(callback_query: CallbackQuery):
                 await callback_query.answer("Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
         elif callback_query.message.photo or callback_query.message.video or callback_query.message.document:
             try:
-                # Если только медиа (фото/видео) - удаляем медиа сообщение и отправляем текстовое
                 await callback_query.message.delete()
                 await callback_query.message.answer(
                     "Выберите мастера, чтобы узнать подробности:",
@@ -373,50 +361,48 @@ async def show_masters_list(callback_query: CallbackQuery):
                 await callback_query.answer("Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
     else:
         await callback_query.message.edit_text("Нет доступных мастеров.")
-@router_master.callback_query(lambda c: c.data.startswith("master_info_"))
+
+@router_master.callback_query(lambda c: c.data.startswith("info_master_"))
 async def show_master_info(callback_query: CallbackQuery):
-    logger.info(f"Получены данные callback: {callback_query.data}")
     try:
         master_id = int(callback_query.data.split("_")[2])
-    except (IndexError, ValueError):
-        await callback_query.answer("Некорректные данные мастера.", show_alert=True)
-        return
+        logger.debug(f"Пользователь запросил информацию о мастере с ID: {master_id}")
 
-    with SessionFactory() as session:
-        master = session.query(Master).filter(Master.master_id == master_id).first()
+        with SessionFactory() as session:
+            master = session.query(Master).filter(Master.master_id == master_id).first()
 
-        if not master:
-            await callback_query.answer("Мастер не найден.", show_alert=True)
-            return
+            if not master:
+                await callback_query.answer("Мастер не найден.", show_alert=True)
+                return
 
-        master_info = f"Имя: {master.master_name}\nОписание: {master.master_description}"
+            # Формируем информацию о мастере
+            master_info = f"Имя: {master.master_name}\nОписание: {master.master_description}"
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="Назад", callback_data="masters")]
+            ])
 
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="masters")]])
-
-        if master.master_photo:
-            if isinstance(master.master_photo, list):
-                file_id = master.master_photo[0].file_id
+            # Если у мастера есть фото
+            if master.master_photo:
+                try:
+                    # Отправляем фото с описанием
+                    await callback_query.message.edit_media(
+                        media=InputMediaPhoto(media=master.master_photo, caption=master_info),
+                        reply_markup=keyboard
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка при отображении фото мастера: {e}")
+                    await callback_query.message.edit_text(master_info, reply_markup=keyboard)
             else:
-                file_id = master.master_photo
+                # Если фото нет, отправляем только текст
+                await callback_query.message.edit_text(master_info, reply_markup=keyboard)
+    except (IndexError, ValueError):
+        logger.error(f"Некорректные данные callback: {callback_query.data}")
+        await callback_query.answer("Некорректные данные. Попробуйте снова.", show_alert=True)
+    except Exception as e:
+        logger.error(f"Ошибка при отображении информации о мастере: {e}")
+        await callback_query.answer("Произошла ошибка. Попробуйте снова.", show_alert=True)
 
-            media = InputMediaPhoto(media=file_id, caption=master_info)
 
-            try:
-                await callback_query.message.edit_media(
-                    media=media,
-                    reply_markup=keyboard
-                )
-            except Exception as e:
-                logger.error(f"Ошибка при редактировании медиа: {e}")
-                await callback_query.answer("Ошибка при отправке фото. Попробуйте снова.", show_alert=True)
-        else:
-            try:
-                await callback_query.message.edit_text(
-                    text=master_info,
-                    reply_markup=keyboard
-                )
-            except Exception as e:
-                logger.error(f"Ошибка при редактировании текста: {e}")
-                await callback_query.answer("Не удалось обновить информацию. Попробуйте снова.", show_alert=True)
-
-    logger.debug(f"Отправлена информация о мастере {master.master_name}")
+@router_master.callback_query(lambda c: c.data.startswith("master_info_"))
+async def show_master_info(callback_query: CallbackQuery):
+    logger.debug(f"Получен callback: {callback_query.data}")

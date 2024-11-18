@@ -25,10 +25,11 @@ class Master(Base):
 
 # Таблица Booking (Записи)
 class Booking(Base):
-    __tablename__ = 'booking'
+    __tablename__ = 'bookings'
 
     booking_id = Column(Integer, primary_key=True)
-    booking_datetime = Column(DateTime, nullable=True)
+    booking_datetime = Column(DateTime)
+    status = Column(String)
 
     # Внешний ключи
     user_id = Column(BigInteger, ForeignKey('user.user_id'), nullable=False)

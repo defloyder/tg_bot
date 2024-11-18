@@ -7,7 +7,9 @@ from database import User, Booking, Master
 from logger_config import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy.orm import selectinload
 
+# Создание пользователя
 def create_user(session, event: types.Message):
     user_id = event.from_user.id
     username = event.from_user.username
@@ -29,11 +31,11 @@ def create_user(session, event: types.Message):
         session.rollback()
         logger.error(f"Error creating user {user_id}: {e}")
 
-
+# Получение пользователя по ID
 def get_user_by_id(session, user_id):
     return session.query(User).filter(User.user_id == user_id).first()
 
-
+# Обновление имени пользователя
 def update_user_username(session, user_id, new_nickname):
     user = session.query(User).filter(User.user_id == user_id).first()
     if user:
@@ -41,7 +43,7 @@ def update_user_username(session, user_id, new_nickname):
         session.commit()
     return user
 
-
+# Удаление мастера
 def delete_master(session, master_id):
     master = session.query(Master).filter(Master.master_id == master_id).first()
     if master:
@@ -50,19 +52,18 @@ def delete_master(session, master_id):
         return True
     return False
 
-
-
+# Создание мастера
 def create_master(session, master_name, master_description=None, master_photo=None):
     new_master = Master(master_name=master_name, master_description=master_description, master_photo=master_photo)
     session.add(new_master)
     session.commit()
     return new_master
 
-
+# Получение мастера по ID
 def get_master_by_id(session, master_id):
     return session.query(Master).filter(Master.master_id == master_id).first()
 
-
+# Обновление данных мастера
 def update_master(session, master_id, master_name=None, master_description=None, master_photo=None):
     master = session.query(Master).filter(Master.master_id == master_id).first()
     if master:
@@ -75,34 +76,22 @@ def update_master(session, master_id, master_name=None, master_description=None,
         session.commit()
     return master
 
-
-# Пример синхронной функции
-def delete_master(session, master_id):
-    master = session.query(Master).filter(Master.master_id == master_id).first()
-    if master:
-        session.delete(master)
-        session.commit()
-        return True
-    return False
-
-def create_record(session: Session, datetime_value: str):
+def create_booking(session, booking_datetime, master_id, user_id):
     try:
-        booking_datetime = datetime.strptime(datetime_value, '%d.%m.%Y %H:%M')
-
-        new_record = Booking(
-            booking_datetime=booking_datetime
+        new_booking = Booking(
+            booking_datetime=booking_datetime,
+            master_id=master_id,
+            user_id=user_id
         )
-        session.add(new_record)
+        session.add(new_booking)
         session.commit()
-        logger.info(f"Запись успешно добавлена в базу данных: {new_record}")
-        return new_record
-
+        return new_booking
     except Exception as e:
-        session.rollback()
         logger.error(f"Ошибка при создании записи: {e}")
+        session.rollback()  # Откатываем изменения в случае ошибки
         return None
 
-
+# Получение записи по ID
 def get_record_by_id(session: Session, record_id: int):
     try:
         return session.query(Booking).filter(Booking.id == record_id).first()
@@ -110,12 +99,21 @@ def get_record_by_id(session: Session, record_id: int):
         logger.error(f"Ошибка при получении записи с ID {record_id}: {e}")
         return None
 
+# Получение занятых дат для мастера
+def get_booked_dates_for_master(session, master_id):
+    try:
+        # Используем правильный запрос для получения всех занятых дат
+        booked_dates = session.query(Booking.booking_datetime).filter(Booking.master_id == master_id).all()
+        return {booking.booking_datetime.date() for booking in booked_dates}  # Возвращаем только даты
+    except Exception as e:
+        logger.error(f"Ошибка при запросе занятых дат для мастера {master_id}: {e}")
+        return set()
 
+# Обновление даты записи
 def update_record_datetime(session: Session, record_id: int, new_datetime: str):
     try:
         updated_datetime = datetime.strptime(new_datetime, '%d.%m.%Y %H:%M')
         record = session.query(Booking).filter(Booking.id == record_id).first()
-
         if record:
             record.booking_datetime = updated_datetime
             session.commit()
@@ -127,11 +125,10 @@ def update_record_datetime(session: Session, record_id: int, new_datetime: str):
         logger.error(f"Ошибка при обновлении записи с ID {record_id}: {e}")
         return None
 
-
+# Удаление записи
 def delete_record(session: Session, record_id: int):
     try:
         record = session.query(Booking).filter(Booking.id == record_id).first()
-
         if record:
             session.delete(record)
             session.commit()
