@@ -5,7 +5,7 @@ ADMIN_ID = 475953677  # ID администратора
 def main_menu(user_id):
     buttons = [
         [InlineKeyboardButton(text="Информация о мастерах", callback_data="masters"),
-         InlineKeyboardButton(text="Прайс лист", callback_data="price_list")],
+         InlineKeyboardButton(text="Прайс лист", callback_data="get_price_list")],
         [InlineKeyboardButton(text="Записаться", callback_data="booking")],
         [InlineKeyboardButton(text="Мои записи", callback_data="my_bookings")]
     ]

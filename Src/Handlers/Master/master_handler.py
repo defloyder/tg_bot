@@ -1,16 +1,15 @@
 from aiogram import Router
+from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
-from aiogram.filters import Command
-from sqlalchemy.exc import IntegrityError
-from aiogram.fsm.context import FSMContext
 from aiogram.types import InputMediaPhoto
+from sqlalchemy.exc import IntegrityError
 
 from database import Master
-from logger_config import logger
 from database.database import SessionFactory
-from database.repository import create_master, update_master, get_master_by_id, delete_master
-from menu import ADMIN_ID, back_to_main_menu, main_menu
+from database.repository import create_master
+from logger_config import logger
+from menu import ADMIN_ID, main_menu
 
 router_master = Router(name="masters")
 
@@ -328,6 +327,7 @@ async def back_to_main_menu(callback_query: CallbackQuery):
     keyboard = main_menu(user_id)
     await callback_query.message.edit_text("Главное меню:", reply_markup=keyboard)
 
+
 @router_master.callback_query(lambda c: c.data == "masters")
 async def show_masters_list(callback_query: CallbackQuery):
     with SessionFactory() as session:
@@ -361,6 +361,7 @@ async def show_masters_list(callback_query: CallbackQuery):
                 await callback_query.answer("Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
     else:
         await callback_query.message.edit_text("Нет доступных мастеров.")
+
 
 @router_master.callback_query(lambda c: c.data.startswith("info_master_"))
 async def show_master_info(callback_query: CallbackQuery):

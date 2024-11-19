@@ -29,12 +29,19 @@ class Booking(Base):
 
     booking_id = Column(Integer, primary_key=True)
     booking_datetime = Column(DateTime)
-    status = Column(String)
+    status = Column(String, nullable=False)  # Поле должно быть записываемым
 
-    # Внешний ключи
     user_id = Column(BigInteger, ForeignKey('user.user_id'), nullable=False)
     master_id = Column(Integer, ForeignKey('master.master_id'), nullable=False)
 
-    # Связи
     user = relationship("User", backref="bookings")
     master = relationship("Master", backref="bookings")
+
+
+# Таблица PriceList
+class PriceList(Base):
+    __tablename__ = 'price_list'
+
+    price_id = Column(Integer, primary_key=True)
+    price_description = Column(String(1024), nullable=True)
+    price_photo = Column(String(255), nullable=True)

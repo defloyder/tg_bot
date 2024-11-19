@@ -1,10 +1,12 @@
+from datetime import datetime
+
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from datetime import datetime
-from database import Booking
+
 from database.database import SessionFactory
 from database.repository import get_booked_dates_for_master
 from logger_config import logger
+
 
 # Генерация календаря для выбора даты
 async def generate_calendar(master_id: int):
@@ -22,10 +24,8 @@ async def generate_calendar(master_id: int):
 
     week = []
 
-    # Подготовка списка всех занятых дат для мастера
     try:
         with SessionFactory() as session:
-            # Выбираем занятые даты и часы из базы для текущего мастера
             busy_dates = await get_booked_dates_for_master(session, master_id)
             logger.debug(f"Занятые даты для мастера {master_id}: {busy_dates}")
     except Exception as e:
@@ -36,12 +36,10 @@ async def generate_calendar(master_id: int):
         try:
             date = datetime(now.year, current_month, day)
 
-            # Если месяц изменился, прекращаем цикл
             if date.month != current_month:
                 break
 
-            # Блокируем прошедшие дни
-            if date.date() < now.date():  # Если день в прошлом
+            if date.date() < now.date():
                 week.append(InlineKeyboardButton(text=f"{day}❌", callback_data="ignore", disabled=True))
                 continue
 
@@ -65,7 +63,6 @@ async def generate_calendar(master_id: int):
     if week:  # Добавляем оставшиеся дни в последнюю строку
         calendar_buttons.row(*week)
 
-    # Кнопка "Назад" для перехода к предыдущему меню
     calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking", width=7))
 
     return calendar_buttons.as_markup()
