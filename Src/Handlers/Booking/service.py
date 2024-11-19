@@ -8,7 +8,6 @@ from database.repository import get_booked_dates_for_master
 from logger_config import logger
 
 
-# Генерация календаря для выбора даты
 async def generate_calendar(master_id: int):
     now = datetime.now()
     month_str = now.strftime("%B %Y")
@@ -18,7 +17,6 @@ async def generate_calendar(master_id: int):
     calendar_buttons = InlineKeyboardBuilder()
     calendar_buttons.add(InlineKeyboardButton(text=month_str, callback_data="ignore", width=7))
 
-    # Добавляем дни недели
     week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     calendar_buttons.row(*[InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
 
@@ -32,7 +30,7 @@ async def generate_calendar(master_id: int):
         logger.error(f"Ошибка при запросе занятых дат для мастера {master_id}: {e}")
         busy_dates = set()
 
-    for day in range(1, 32):  # Проходим по всем дням месяца
+    for day in range(1, 32):
         try:
             date = datetime(now.year, current_month, day)
 
@@ -53,14 +51,14 @@ async def generate_calendar(master_id: int):
                 week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
                 logger.info(f"Дата {date_str} доступна.")
 
-            if len(week) == 7:  # Завершаем строку, когда набрано 7 дней
+            if len(week) == 7:
                 calendar_buttons.row(*week)
                 week = []
         except ValueError:
             logger.warning(f"Ошибка при обработке дня {day}. Возможно, этого дня нет в месяце.")
             break
 
-    if week:  # Добавляем оставшиеся дни в последнюю строку
+    if week:
         calendar_buttons.row(*week)
 
     calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking", width=7))

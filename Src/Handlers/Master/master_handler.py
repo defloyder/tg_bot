@@ -376,13 +376,11 @@ async def show_master_info(callback_query: CallbackQuery):
                 await callback_query.answer("Мастер не найден.", show_alert=True)
                 return
 
-            # Формируем информацию о мастере
             master_info = f"Имя: {master.master_name}\nОписание: {master.master_description}"
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="Назад", callback_data="masters")]
             ])
 
-            # Если у мастера есть фото
             if master.master_photo:
                 try:
                     # Отправляем фото с описанием
@@ -394,7 +392,6 @@ async def show_master_info(callback_query: CallbackQuery):
                     logger.error(f"Ошибка при отображении фото мастера: {e}")
                     await callback_query.message.edit_text(master_info, reply_markup=keyboard)
             else:
-                # Если фото нет, отправляем только текст
                 await callback_query.message.edit_text(master_info, reply_markup=keyboard)
     except (IndexError, ValueError):
         logger.error(f"Некорректные данные callback: {callback_query.data}")

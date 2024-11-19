@@ -99,17 +99,14 @@ def get_record_by_id(session: Session, record_id: int):
         logger.error(f"Ошибка при получении записи с ID {record_id}: {e}")
         return None
 
-# Получение занятых дат для мастера
 def get_booked_dates_for_master(session, master_id):
     try:
-        # Используем правильный запрос для получения всех занятых дат
         booked_dates = session.query(Booking.booking_datetime).filter(Booking.master_id == master_id).all()
         return {booking.booking_datetime.date() for booking in booked_dates}  # Возвращаем только даты
     except Exception as e:
         logger.error(f"Ошибка при запросе занятых дат для мастера {master_id}: {e}")
         return set()
 
-# Обновление даты записи
 def update_record_datetime(session: Session, record_id: int, new_datetime: str):
     try:
         updated_datetime = datetime.strptime(new_datetime, '%d.%m.%Y %H:%M')
@@ -125,7 +122,6 @@ def update_record_datetime(session: Session, record_id: int, new_datetime: str):
         logger.error(f"Ошибка при обновлении записи с ID {record_id}: {e}")
         return None
 
-# Удаление записи
 def delete_record(session: Session, record_id: int):
     try:
         record = session.query(Booking).filter(Booking.id == record_id).first()
