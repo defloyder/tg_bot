@@ -19,7 +19,6 @@ async def initiate_chat_with_master(callback_query: CallbackQuery, state: FSMCon
     master_id = callback_query.data.split("_")[-1]
 
     try:
-        # Оповещаем пользователя о начале диалога
         await callback_query.message.answer(
             "Вы можете написать сообщение мастеру. После каждого сообщения вы сможете завершить диалог.",
             reply_markup=InlineKeyboardMarkup(
@@ -47,17 +46,14 @@ async def user_send_message(message: Message, state: FSMContext):
         return
 
     try:
-        # Пересылаем сообщение мастеру
+        # Пересылаем сообщение мастеру с кнопкой "Начать диалог"
         await message.bot.send_message(
             master_id,
             f"Сообщение от пользователя {message.from_user.full_name}:\n{message.text}",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Завершить диалог", callback_data="end_user_chat")]]
+                inline_keyboard=[[InlineKeyboardButton(text="Начать диалог", callback_data=f"start_master_chat_{message.from_user.id}")]]
             )
         )
-
-        # Убираем сообщение о доставке для пользователя
-        # Просто не отправляем подтверждение "Ваше сообщение доставлено"
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения мастеру {master_id}: {e}")
         await message.answer("Не удалось отправить сообщение мастеру. Попробуйте позже.")
@@ -109,12 +105,9 @@ async def master_send_message(message: Message, state: FSMContext):
             user_id,
             f"Сообщение от мастера {message.from_user.full_name}:\n{message.text}",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Завершить диалог", callback_data="end_master_chat")]]
+                inline_keyboard=[[InlineKeyboardButton(text="Завершить диалог", callback_data="end_user_chat")]]
             )
         )
-
-        # Убираем сообщение о доставке для мастера
-        # Просто не отправляем подтверждение "Ваше сообщение доставлено"
     except Exception as e:
         logger.error(f"Ошибка при отправке сообщения пользователю {user_id}: {e}")
         await message.answer("Не удалось отправить сообщение пользователю. Попробуйте позже.")

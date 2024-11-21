@@ -2,7 +2,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
 
-ADMIN_ID = [475953677, 962757762]
+ADMIN_ID = 475953677
+# MASTER_IDS = {'6754920583'}
+
 
 class EnvBaseSettings(BaseSettings):
     class Config:
@@ -11,7 +13,7 @@ class EnvBaseSettings(BaseSettings):
         extra = "ignore"
 
 class DBSettings(EnvBaseSettings):
-    DATABASE_URL: str = "sqlite+aiosqlite:///database.db"
+    DATABASE_URL: str = "sqlite:///database.db"
 
 class BotSettings(EnvBaseSettings):
     BOT_TOKEN: SecretStr
