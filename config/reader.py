@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr
 
+
 ADMIN_ID = [475953677, 962757762]
 
 class EnvBaseSettings(BaseSettings):
