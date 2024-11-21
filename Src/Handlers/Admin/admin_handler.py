@@ -59,31 +59,27 @@ async def main_menu_handler(callback_query: CallbackQuery):
                 chat_id=callback_query.message.chat.id,
                 message_id=price_message_id
             )
-            price_message_id = None  # Сбрасываем ID сообщения после удаления
+            price_message_id = None  # Сбрасываем id сообщения после удаления
         except aiogram.exceptions.TelegramBadRequest as e:
             logger.error(f"Ошибка при удалении сообщения с прайсом: {e}")
         except Exception as e:
             logger.error(f"Не удалось удалить сообщение с прайсом: {e}")
 
     # Проверяем, существует ли сообщение, перед тем как редактировать
-    message_to_edit = callback_query.message
-    if message_to_edit:  # Проверка на существование сообщения
+    if callback_query.message:  # Проверка на существование сообщения
         try:
-            # Убеждаемся, что main_menu вызвана правильно
-            menu_keyboard = await main_menu(user_id)  # Если main_menu - асинхронная функция
-            if not isinstance(menu_keyboard, InlineKeyboardMarkup):
-                raise TypeError(f"main_menu должна возвращать InlineKeyboardMarkup, но вернула: {type(menu_keyboard)}")
-
-            await message_to_edit.edit_text(
+            await callback_query.message.edit_text(
                 "Вы в главном меню. Выберите нужную опцию.",
-                reply_markup=menu_keyboard
+                reply_markup=main_menu(user_id)
             )
         except aiogram.exceptions.TelegramBadRequest as e:
+            # Это ошибка редактирования, вероятно, сообщение уже удалено
             logger.error(f"Ошибка при редактировании сообщения: {e}")
         except Exception as e:
+            # Обрабатываем все остальные ошибки
             logger.error(f"Не удалось отредактировать сообщение: {e}")
     else:
-        logger.error("Сообщение для редактирования не найдено.")
+        logger.error(f"Сообщение для редактирования не найдено.")
 
     logger.info(f"Пользователь {user_id} вернулся в главное меню.")
 

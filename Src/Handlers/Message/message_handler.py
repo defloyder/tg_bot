@@ -46,12 +46,10 @@ async def user_send_message(message: Message, state: FSMContext):
         return
 
     try:
-        # Пересылаем сообщение мастеру с кнопкой "Начать диалог"
         await message.bot.send_message(
             master_id,
             f"Сообщение от пользователя {message.from_user.full_name}:\n{message.text}",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Начать диалог", callback_data=f"start_master_chat_{message.from_user.id}")]]
             )
         )
     except Exception as e:
@@ -105,7 +103,6 @@ async def master_send_message(message: Message, state: FSMContext):
             user_id,
             f"Сообщение от мастера {message.from_user.full_name}:\n{message.text}",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Завершить диалог", callback_data="end_user_chat")]]
             )
         )
     except Exception as e:
