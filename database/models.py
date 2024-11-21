@@ -1,13 +1,14 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, BigInteger
+import uuid
+from sqlalchemy import create_engine, Column, String, DateTime, ForeignKey, BigInteger, Integer
 from sqlalchemy.orm import relationship
 from database.database import Base
 
 
-# Таблица User
+## Таблица User
 class User(Base):
     __tablename__ = 'user'
 
-    user_id = Column(BigInteger , primary_key=True)
+    user_id = Column(BigInteger, primary_key=True)
     username = Column(String(255), nullable=True)
     created_at = Column(BigInteger, nullable=False)
     role = Column(String(255), nullable=True)
@@ -17,22 +18,22 @@ class User(Base):
 class Master(Base):
     __tablename__ = 'master'
 
-    master_id = Column(Integer, primary_key=True)
+    master_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))  # UUID как строка
     master_name = Column(String(255), nullable=True)
     master_description = Column(String(255), nullable=True)
     master_photo = Column(String(255), nullable=True)
 
 
-# Таблица Booking (Записи)
 class Booking(Base):
     __tablename__ = 'bookings'
 
     booking_id = Column(Integer, primary_key=True)
     booking_datetime = Column(DateTime)
-    status = Column(String, nullable=False)  # Поле должно быть записываемым
+    status = Column(String, default="new")
+    reminder_job_id = Column(Integer, nullable=True)  # Новая колонка
 
     user_id = Column(BigInteger, ForeignKey('user.user_id'), nullable=False)
-    master_id = Column(Integer, ForeignKey('master.master_id'), nullable=False)
+    master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)
 
     user = relationship("User", backref="bookings")
     master = relationship("Master", backref="bookings")
@@ -45,3 +46,13 @@ class PriceList(Base):
     price_id = Column(Integer, primary_key=True)
     price_description = Column(String(1024), nullable=True)
     price_photo = Column(String(255), nullable=True)
+
+    def set_description(self, description):
+        if not isinstance(description, str):
+            raise ValueError("Описание должно быть строкой.")
+        self.price_description = description
+
+    def set_photo(self, photo):
+        if not isinstance(photo, str):
+            raise ValueError("Путь к фото должен быть строкой.")
+        self.price_photo = photo

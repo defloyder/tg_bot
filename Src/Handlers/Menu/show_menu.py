@@ -8,8 +8,6 @@ from menu import main_menu
 
 router_show_menu = Router(name="show_menu")
 
-
-
 @router_show_menu.message(CommandStart())
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id

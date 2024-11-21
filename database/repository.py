@@ -1,4 +1,6 @@
 import time
+import uuid
+
 from aiogram import types
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
@@ -43,8 +45,26 @@ def update_user_username(session, user_id, new_nickname):
         session.commit()
     return user
 
+
+
+# Создание мастера
+def create_master(session, master_name, master_description=None, master_photo=None):
+    new_master = Master(
+        master_id=str(uuid.uuid4()),  # Генерация уникального идентификатора
+        master_name=master_name,
+        master_description=master_description,
+        master_photo=master_photo
+    )
+    session.add(new_master)
+    session.commit()
+    return new_master
+
+def get_master_by_id(session, master_id: str):
+    return session.query(Master).filter(Master.master_id == master_id).first()
+
+
 # Удаление мастера
-def delete_master(session, master_id):
+def delete_master(session, master_id: str):
     master = session.query(Master).filter(Master.master_id == master_id).first()
     if master:
         session.delete(master)
@@ -52,16 +72,6 @@ def delete_master(session, master_id):
         return True
     return False
 
-# Создание мастера
-def create_master(session, master_name, master_description=None, master_photo=None):
-    new_master = Master(master_name=master_name, master_description=master_description, master_photo=master_photo)
-    session.add(new_master)
-    session.commit()
-    return new_master
-
-# Получение мастера по ID
-def get_master_by_id(session, master_id):
-    return session.query(Master).filter(Master.master_id == master_id).first()
 
 # Обновление данных мастера
 def update_master(session, master_id, master_name=None, master_description=None, master_photo=None):
@@ -76,10 +86,12 @@ def update_master(session, master_id, master_name=None, master_description=None,
         session.commit()
     return master
 
-def create_booking(session, booking_datetime, master_id, user_id):
+# Создание записи
+def create_booking(session, booking_datetime, master_id: str, user_id: int, status="new"):
     try:
         new_booking = Booking(
             booking_datetime=booking_datetime,
+            status=status,
             master_id=master_id,
             user_id=user_id
         )
@@ -91,6 +103,7 @@ def create_booking(session, booking_datetime, master_id, user_id):
         session.rollback()  # Откатываем изменения в случае ошибки
         return None
 
+
 # Получение записи по ID
 def get_record_by_id(session: Session, record_id: int):
     try:
@@ -99,7 +112,8 @@ def get_record_by_id(session: Session, record_id: int):
         logger.error(f"Ошибка при получении записи с ID {record_id}: {e}")
         return None
 
-def get_booked_dates_for_master(session, master_id):
+# Получение занятых дат для мастера
+def get_booked_dates_for_master(session, master_id: str):
     try:
         booked_dates = session.query(Booking.booking_datetime).filter(Booking.master_id == master_id).all()
         return {booking.booking_datetime.date() for booking in booked_dates}  # Возвращаем только даты
@@ -135,3 +149,5 @@ def delete_record(session: Session, record_id: int):
         session.rollback()
         logger.error(f"Ошибка при удалении записи с ID {record_id}: {e}")
         return None
+
+
