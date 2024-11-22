@@ -12,6 +12,7 @@ from Src.Handlers.Booking.service import generate_calendar
 from Src.Handlers.MyBookings.my_bookings_handler import back_to_my_bookings_menu
 from database import Booking, Master
 from database.database import SessionFactory
+from database.models import MasterSchedule
 from database.repository import create_booking
 from logger_config import logger
 from menu import main_menu
@@ -482,3 +483,31 @@ async def schedule_booking_reminder(booking_datetime, bot, user_id, master_name,
         logger.warning(f"Напоминание уже прошло для пользователя {user_id}. Мгновенная отправка.")
         await send_booking_reminder(bot, user_id, master_name, booking_datetime)
 
+@router_booking.callback_query(lambda c: c.data.startswith('date_'))
+async def process_callback_date(callback_query: CallbackQuery):
+    data = callback_query.data.split('_')
+    master_id, date = data[1], data[2]
+    logger.debug(f"Пользователь выбрал дату для записи: {date}, мастер ID: {master_id}")
+    await callback_query.answer()
+
+    try:
+        with SessionFactory() as session:
+            # Получаем расписание мастера для выбранной даты
+            schedule = session.query(MasterSchedule).filter(
+                MasterSchedule.master_id == master_id
+            ).all()
+            available_times = []
+            for item in schedule:
+                # Например, если день недели совпадает с выбранной датой
+                # Добавляем доступные временные интервалы
+                available_times.append(f"{item.start_time} - {item.end_time}")
+
+            time_buttons = []
+            for time in available_times:
+                time_buttons.append([InlineKeyboardButton(text=time, callback_data=f"time_{master_id}_{date}_{time}")])
+
+            markup = InlineKeyboardMarkup(inline_keyboard=time_buttons)
+            await callback_query.message.edit_text("Выберите доступное время:", reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Ошибка при обработке времени: {e}")
+        await callback_query.answer("Произошла ошибка при обработке времени.", show_alert=True)

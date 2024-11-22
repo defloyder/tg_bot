@@ -1,5 +1,6 @@
 import uuid
-from sqlalchemy import create_engine, Column, String, DateTime, ForeignKey, BigInteger, Integer
+
+from sqlalchemy import create_engine, Column, String, DateTime, ForeignKey, BigInteger, Integer, Enum, Date, Time
 from sqlalchemy.orm import relationship
 from database.database import Base
 
@@ -56,3 +57,18 @@ class PriceList(Base):
         if not isinstance(photo, str):
             raise ValueError("Путь к фото должен быть строкой.")
         self.price_photo = photo
+
+
+class MasterSchedule(Base):
+    __tablename__ = 'master_schedule'
+
+    schedule_id = Column(Integer, primary_key=True)
+    master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)  # Тип String(36) и исправлено на 'master.master_id'
+    day_of_week = Column(String, nullable=False)  # День недели, например: 'Monday'
+    start_time = Column(Time, nullable=False)  # Время начала
+    end_time = Column(Time, nullable=False)    # Время окончания
+
+    master = relationship("Master", back_populates="schedules")
+
+Master.schedules = relationship("MasterSchedule", back_populates="master")
+
