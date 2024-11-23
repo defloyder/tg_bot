@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from tempfile import NamedTemporaryFile
+from typing import Union
 
 import aiogram
 import pandas as pd
@@ -24,8 +25,7 @@ from menu import admin_panel, main_menu
 
 router_admin = Router(name="admin")
 
-ADMIN_ID = 475953677
-
+ADMIN_ID = [475953677, 962757762]
 
 class PriceListState(StatesGroup):
     waiting_for_description = State()
@@ -38,7 +38,7 @@ price_message_id = None
 @router_admin.callback_query(lambda c: c.data == "admin_panel")
 async def process_callback_admin_panel(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
-    if user_id == ADMIN_ID:
+    if user_id in ADMIN_ID:
         await callback_query.answer()
         await callback_query.message.edit_text("Административная панель:", reply_markup=admin_panel())
         logger.info(f"Администратор {user_id} открыл административную панель.")
@@ -66,11 +66,15 @@ async def main_menu_handler(callback_query: CallbackQuery):
             logger.error(f"Не удалось удалить сообщение с прайсом: {e}")
 
     # Проверяем, существует ли сообщение, перед тем как редактировать
-    if callback_query.message:  # Проверка на существование сообщения
+    if callback_query.message:
         try:
+            # Получаем меню для пользователя (с использованием await, так как main_menu асинхронная функция)
+            reply_markup = await main_menu(user_id)
+
+            # Редактируем сообщение с новым текстом и клавиатурой
             await callback_query.message.edit_text(
                 "Вы в главном меню. Выберите нужную опцию.",
-                reply_markup=main_menu(user_id)
+                reply_markup=reply_markup
             )
         except aiogram.exceptions.TelegramBadRequest as e:
             # Это ошибка редактирования, вероятно, сообщение уже удалено
@@ -404,6 +408,10 @@ async def edit_price_list_start(callback_query: types.CallbackQuery, state: FSMC
 
 @router_admin.message(PriceListState.waiting_for_description)
 async def process_price_list_description(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("Пожалуйста, отправьте текстовое описание для прайс-листа.")
+        return
+
     await state.update_data(description=message.text)
     await message.answer("Теперь отправьте фотографию для прайс-листа:")
     await state.set_state(PriceListState.waiting_for_photo)
@@ -413,117 +421,139 @@ async def process_price_list_description(message: Message, state: FSMContext):
 async def process_price_list_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     description = data.get("description")
-    if message.photo:
-        photo = message.photo[-1]
-        file_id = photo.file_id
 
-        try:
-            file = await message.bot.get_file(file_id)
-            os.makedirs("photos", exist_ok=True)
-            extension = file.file_path.split('.')[-1]
-            price_photo = f"photos/price_list_{file.file_id}.{extension}"
-            await message.bot.download_file(file.file_path, destination=price_photo)
+    if not message.photo:
+        await message.answer("Пожалуйста, отправьте фотографию для прайс-листа.")
+        return
 
-            with SessionFactory() as session:
-                price_list = session.query(PriceList).first()
-                if price_list:
-                    price_list.price_description = description
-                    price_list.price_photo = price_photo
-                else:
-                    price_list = PriceList(price_description=description, price_photo=price_photo)
-                    session.add(price_list)
-                session.commit()
+    photo = message.photo[-1]
+    file_id = photo.file_id
 
-            if price_message_id:
-                await message.bot.edit_message_media(
-                    media=types.InputMediaPhoto(price_photo, caption=description),
-                    chat_id=message.chat.id,
-                    message_id=price_message_id
-                )
-                await message.answer("Прайс-лист успешно обновлён!")
+    try:
+        file = await message.bot.get_file(file_id)
+        os.makedirs("photos", exist_ok=True)
+        extension = file.file_path.split('.')[-1]
+        price_photo = f"photos/price_list_{file.file_id}.{extension}"
+        await message.bot.download_file(file.file_path, destination=price_photo)
+
+        with SessionFactory() as session:
+            price_list = session.query(PriceList).first()
+            if price_list:
+                price_list.price_description = description
+                price_list.price_photo = price_photo
             else:
-                await message.answer("Прайс-лист успешно обновлён, но  ещё не был отображен.")
+                price_list = PriceList(price_description=description, price_photo=price_photo)
+                session.add(price_list)
+            session.commit()
 
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении прайс-листа: {e}")
-            await message.answer("Произошла ошибка при обновлении прайс-листа.")
-        finally:
-            await state.clear()
-    else:
-        await message.answer("Пожалуйста, отправьте фото.")
+        if price_message_id:
+            await message.bot.edit_message_media(
+                media=types.InputMediaPhoto(price_photo, caption=description),
+                chat_id=message.chat.id,
+                message_id=price_message_id
+            )
+            await message.answer("Прайс-лист успешно обновлён!")
+        else:
+            await message.answer("Прайс-лист успешно обновлён, но ещё не был отображен.")
+
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении прайс-листа: {e}")
+        await message.answer("Произошла ошибка при обновлении прайс-листа.")
+    finally:
+        await state.clear()
 
 
-@router_admin.message(lambda message: message.text.lower() == 'get_price_list')
-async def show_price_list(message: Message):
+@router_admin.message(lambda message: message.text and message.text.lower() == 'get_price_list')
+@router_admin.callback_query(lambda callback: callback.data == 'get_price_list')
+async def show_price_list(event: Union[Message, CallbackQuery], state: FSMContext):
     global price_message_id
     try:
+        # Определяем, кто вызвал: сообщение или callback
+        if isinstance(event, Message):
+            chat_id = event.chat.id
+            bot = event.bot
+        elif isinstance(event, CallbackQuery):
+            chat_id = event.message.chat.id
+            bot = event.bot
+            await event.answer()
+
         with SessionFactory() as session:
             price_list = session.query(PriceList).first()
 
         if price_list:
             description = price_list.price_description
             price_photo = price_list.price_photo
-            logger.debug(f"Price list found. Description: {description}, Photo: {price_photo}")
+            logger.debug(f"Прайс-лист найден. Описание: {description}, Фото: {price_photo}")
 
             back_button = InlineKeyboardButton(text="Назад", callback_data="main_menu")
             buttons = [[back_button]]
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
+            # Проверяем наличие файла фото
             if os.path.exists(price_photo):
                 input_file = FSInputFile(price_photo, filename=os.path.basename(price_photo))
-                logger.debug(f"Фото найдено, пытаемся отправить. Фото: {price_photo}")
+                logger.debug(f"Фото найдено: {price_photo}")
 
+                # Редактируем или отправляем сообщение
                 if price_message_id:
                     try:
-                        await message.bot.edit_message_media(
+                        await bot.edit_message_media(
                             media=types.InputMediaPhoto(input_file, caption=description),
-                            chat_id=message.chat.id,
+                            chat_id=chat_id,
                             message_id=price_message_id
                         )
-                        await message.bot.edit_message_reply_markup(
-                            chat_id=message.chat.id,
+                        await bot.edit_message_reply_markup(
+                            chat_id=chat_id,
                             message_id=price_message_id,
                             reply_markup=markup
                         )
                     except aiogram.exceptions.TelegramBadRequest as e:
-                        logger.error(f"Ошибка при редактировании сообщения с прайс-листом: {e}")
-                        price_message_id = None  # Сбрасываем ID сообщения в случае ошибки
-                else:
-                    price_message = await message.answer_photo(input_file, caption=description, reply_markup=markup)
-                    price_message_id = price_message.message_id  # Сохраняем ID отправленного сообщения
+                        logger.error(f"Ошибка редактирования сообщения с прайс-листом: {e}")
+                        price_message_id = None
+                if not price_message_id:
+                    price_message = await bot.send_photo(chat_id, photo=input_file, caption=description, reply_markup=markup)
+                    price_message_id = price_message.message_id
             else:
+                logger.warning(f"Файл фотографии не найден: {price_photo}")
+                text = f"Прайс-лист: {description}\nФото не найдено."
                 if price_message_id:
                     try:
-                        await message.bot.edit_message_text(
-                            text=f"Прайс-лист: {description}\nФото не найдено.",
-                            chat_id=message.chat.id,
+                        await bot.edit_message_text(
+                            text=text,
+                            chat_id=chat_id,
                             message_id=price_message_id,
                             reply_markup=markup
                         )
                     except aiogram.exceptions.TelegramBadRequest as e:
-                        logger.error(f"Ошибка при редактировании текстового сообщения с прайс-листом: {e}")
-                        price_message_id = None  # Сбрасываем ID сообщения в случае ошибки
-                else:
-                    await message.answer(f"Прайс-лист: {description}\nФото не найдено.", reply_markup=markup)
+                        logger.error(f"Ошибка редактирования текстового сообщения: {e}")
+                        price_message_id = None
+                if not price_message_id:
+                    await bot.send_message(chat_id, text, reply_markup=markup)
         else:
+            logger.info("Прайс-лист не найден в базе данных.")
+            text = "Прайс-лист не найден в базе данных."
             if price_message_id:
                 try:
-                    await message.bot.edit_message_text(
-                        text="Прайс-лист не найден в базе данных.",
-                        chat_id=message.chat.id,
+                    await bot.edit_message_text(
+                        text=text,
+                        chat_id=chat_id,
                         message_id=price_message_id
                     )
                 except aiogram.exceptions.TelegramBadRequest as e:
-                    logger.error(f"Ошибка при редактировании сообщения с прайс-листом: {e}")
+                    logger.error(f"Ошибка редактирования сообщения: {e}")
                     price_message_id = None
-            else:
-                await message.answer("Прайс-лист не найден в базе данных.")
+            if not price_message_id:
+                await bot.send_message(chat_id, text)
+
     except Exception as e:
-        logger.error(f"Произошла ошибка: {e}")
-        await message.answer(f"Произошла ошибка при получении прайс-листа: {str(e)}")
+        logger.error(f"Ошибка при получении прайс-листа: {e}")
+        error_message = "Произошла ошибка при получении прайс-листа. Пожалуйста, попробуйте позже."
+        if isinstance(event, Message):
+            await event.answer(error_message)
+        elif isinstance(event, CallbackQuery):
+            await event.message.answer(error_message)
 
-
-@router_admin.callback_query(lambda c: c.data == 'get_price_list')
+@router_admin.message(lambda message: isinstance(message.text, str) and message.text.lower() == 'get_price_list')
 async def callback_get_price_list(callback_query: CallbackQuery, state: FSMContext):
     # Проверка текущего состояния FSM
     current_state = await state.get_state()

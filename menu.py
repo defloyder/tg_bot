@@ -26,6 +26,7 @@ async def main_menu(user_id):
             [InlineKeyboardButton(text="Мои записи", callback_data="my_bookings")]
         ]
 
+
         # Если пользователь - администратор, добавляем кнопку "Админ панель"
         if user_id in ADMIN_ID:
             buttons.append([InlineKeyboardButton(text="Админ панель", callback_data="admin_panel")])
