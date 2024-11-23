@@ -49,12 +49,10 @@ async def generate_calendar(master_id: str):
         try:
             date = datetime(now.year, current_month, day)
 
-            # Если это дата в прошлом или текущий день
             if date.date() < now.date():  # Если день в прошлом
                 week.append(InlineKeyboardButton(text=f"{day}❌", callback_data="ignore"))
             elif date.date() == now.date():  # Для текущего дня
-                # Если текущий день, но время уже прошло
-                if now.hour >= 0:  # Дата уже прошла, ставим крестик
+                if now.hour >= 0:  # Если текущее время уже прошло, ставим крестик
                     week.append(InlineKeyboardButton(text=f"{day}❌", callback_data="ignore"))
                 else:
                     date_str = date.strftime("%d")
@@ -64,15 +62,12 @@ async def generate_calendar(master_id: str):
                     else:
                         week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
             else:  # Для будущих дней
-                # Формируем кнопку для доступной даты
                 date_str = date.strftime("%d")
                 callback_data = f'date_{master_id}_{date.strftime("%d.%m.%Y")}'
-                if date.date() in busy_dates:  # Если дата занята
+                if date.date() in busy_dates:
                     week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
-                    logger.info(f"Дата {date_str} уже занята.")
-                else:  # Если дата доступна
+                else:
                     week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
-                    logger.info(f"Дата {date_str} доступна.")
 
             # Завершаем строку недели, если 7 кнопок
             if len(week) == 7:
@@ -83,18 +78,11 @@ async def generate_calendar(master_id: str):
             logger.warning(f"Ошибка при обработке дня {day}. Возможно, этого дня нет в месяце.")
             break
 
-    async def back_to_main_menu(callback_query: CallbackQuery):
-        user_id = callback_query.from_user.id
-
-        keyboard = main_menu(user_id)
-        await callback_query.message.edit_text("Главное меню:", reply_markup=keyboard)
-
     # Если в текущей неделе осталось меньше 7 дней, добавляем их
     if week:
         calendar_buttons.row(*week)
 
     # Добавляем кнопку "Назад", которая будет вести к главному меню
     calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking", width=7))
-
 
     return calendar_buttons.as_markup()
