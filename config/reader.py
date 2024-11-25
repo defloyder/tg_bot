@@ -3,6 +3,7 @@ from pydantic import SecretStr
 
 ADMIN_ID = [475953677, 962757762]
 
+
 class EnvBaseSettings(BaseSettings):
     class Config:
         env_file = ".env"

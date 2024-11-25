@@ -3,11 +3,12 @@ from datetime import datetime
 
 from aiogram import Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from database import Booking, Master, User  # Модели таблицы записей и мастеров
 from database.database import SessionFactory
-from menu import my_bookings_menu, back_to_master_menu, master_menu, back_to_main_menu
+from menu import my_bookings_menu
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ async def process_view_active_booking(callback_query: CallbackQuery):
             # Формируем кнопки для отмены или возврата
             buttons = [
                 [InlineKeyboardButton(text="Отменить", callback_data=f"cancel_booking_{booking.booking_id}")],
-                [InlineKeyboardButton(text="Назад", callback_data="process_active_bookings")]
+                [InlineKeyboardButton(text="Назад", callback_data="active_bookings")]
             ]
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -231,53 +232,70 @@ async def process_view_active_booking(callback_query: CallbackQuery):
 
 @router_bookings.callback_query(lambda c: c.data.startswith("cancel_booking_"))
 async def process_cancel_booking(callback_query: CallbackQuery):
-    """Обработчик для отмены записи."""
-    booking_id = int(callback_query.data.split("_")[-1])  # Извлекаем ID записи
+    booking_id = int(callback_query.data.split("_")[-1])
 
     try:
         with SessionFactory() as session:
-            # Пытаемся найти запись по ID
+            # Получение записи по ID
             booking = session.query(Booking).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
                 await callback_query.message.edit_text("Запись не найдена.", reply_markup=back_to_my_bookings_menu())
                 return
 
-            # Проверяем, что запись еще активна (статус не 'cancelled')
             if booking.status == "cancelled":
                 await callback_query.message.edit_text("Эта запись уже отменена.",
                                                        reply_markup=back_to_my_bookings_menu())
                 return
 
-            # Логируем данные записи перед отменой
-            logger.debug(f"Запись до отмены: {booking}")
-
-            # Обновляем статус записи на 'cancelled' без обращения напрямую к объекту
+            # Обновляем статус записи на "cancelled"
             session.execute(
                 Booking.__table__.update().where(Booking.booking_id == booking_id).values(status="cancelled")
             )
-            session.commit()  # Сохраняем изменения в базе данных
+            session.commit()
 
-            # Проверяем занятость всех слотов мастера на указанную дату
+            logger.debug(f"Запись ID {booking.booking_id} успешно отменена.")
+
             master_id = booking.master_id
-            booking_datetime = booking.booking_datetime
-            booking_date = booking_datetime.date()
+            booking_date = booking.booking_datetime.date()
 
-            booked_slots = session.query(Booking).filter(
+            start_time = 10
+            end_time = 22
+            time_slots = [f"{hour:02}:00" for hour in range(start_time, end_time + 1)]
+
+            active_bookings = session.query(Booking).filter(
                 Booking.master_id == master_id,
-                Booking.booking_datetime.date() == booking_date,
-                Booking.status != "cancelled"  # Игнорируем отменённые записи
+                func.date(Booking.booking_datetime) == booking_date,
+                Booking.status != "cancelled"
             ).all()
 
-            is_slot_freed = all(booking.booking_datetime != booking_datetime for booking in booked_slots)
+            blocked_times = set()
+            for active_booking in active_bookings:
+                booked_hour_int = active_booking.booking_datetime.hour
+                for i in range(0, 3):
+                    blocked_hour = booked_hour_int + i
+                    if start_time <= blocked_hour <= end_time:
+                        blocked_times.add(f"{blocked_hour:02}:00")
 
-            if is_slot_freed:
-                logger.debug(f"Время {booking_datetime.time()} на {booking_date} для мастера {master_id} теперь свободно.")
-                # Здесь можно дополнительно уведомить пользователя или обновить интерфейс для новых записей.
+            time_buttons = []
+            for time in time_slots:
+                if time in blocked_times:
+                    time_buttons.append([InlineKeyboardButton(text=f"❌ {time}", callback_data="ignore")])
+                else:
+                    time_buttons.append(
+                        [InlineKeyboardButton(text=time,
+                                              callback_data=f"time_{master_id}_{booking_date.strftime('%d.%m.%Y')}_{time}:00")]
+                    )
 
-            # Отправляем подтверждение пользователю
-            await callback_query.message.edit_text(f"Запись ID {booking.booking_id} успешно отменена.",
-                                                   reply_markup=back_to_my_bookings_menu())
+            time_buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"master_{master_id}")])
+
+            await callback_query.message.edit_text(
+                "Обновленный список доступного времени:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=time_buttons)
+            )
+            logger.debug("Временные слоты успешно освобождены и обновлены.")
+
+            await callback_query.answer("Запись успешно отменена.", show_alert=True)
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при отмене записи {booking_id}: {e}")
@@ -291,7 +309,6 @@ async def process_cancel_booking(callback_query: CallbackQuery):
             "Произошла ошибка при отмене записи. Попробуйте позже.",
             reply_markup=back_to_my_bookings_menu()
         )
-
 
 
 def back_to_my_bookings_menu():

@@ -21,7 +21,7 @@ async def generate_calendar(master_id: str):
     calendar_buttons.add(InlineKeyboardButton(text=month_str, callback_data="ignore"))
 
     # Добавляем дни недели
-    week_days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     calendar_buttons.row(*[InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
 
     try:
@@ -40,7 +40,6 @@ async def generate_calendar(master_id: str):
     week = []
     day_of_week = datetime(now.year, current_month, 1).weekday()  # Определяем день недели для первого числа месяца
 
-    # Пропускаем дни недели до начала месяца (если 1-е число месяца не понедельник)
     for _ in range(day_of_week):
         week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
 

@@ -59,14 +59,12 @@ async def user_send_message(message: Message, state: FSMContext):
         await message.answer("Не удалось отправить сообщение мастеру. Попробуйте позже.")
 
 
-# Завершение диалога пользователем
 @router_chat.callback_query(lambda c: c.data == "end_user_chat")
 async def end_user_chat(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback_query.message.edit_text("Диалог завершён. Спасибо за использование сервиса!")
 
 
-# Мастер начинает диалог
 @router_chat.callback_query(lambda c: c.data.startswith("start_master_chat_"))
 async def master_initiate_chat(callback_query: CallbackQuery, state: FSMContext):
     user_id = callback_query.data.split("_")[-1]
