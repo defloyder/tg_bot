@@ -114,37 +114,29 @@ async def process_master_history(callback_query: CallbackQuery):
             buttons.append([InlineKeyboardButton(text="Назад", callback_data="master_menu")])
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            # Отправляем сообщение мастеру
             await callback_query.message.edit_text("Ваша история записей:", reply_markup=markup)
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy: {e}")
         await callback_query.message.edit_text(
             "Произошла ошибка при загрузке вашей истории записей. Попробуйте позже.",
-            reply_markup=back_to_master_menu()  # Главное меню мастера
+            reply_markup=back_to_master_menu()
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка: {e}")
         await callback_query.message.edit_text(
             "Произошла ошибка при загрузке вашей истории записей. Попробуйте позже.",
-            reply_markup=back_to_master_menu()  # Главное меню мастера
+            reply_markup=back_to_master_menu()
         )
 
 
 @router_master_admin.callback_query(lambda c: c.data == "windows")
 async def windows(c: CallbackQuery):
-    """Обработчик для управления окошками мастера."""
-    try:
-        master_id = c.from_user.id
-        now = datetime.now()
-        markup = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Управлять расписанием", callback_data="set_schedule")],
-            [InlineKeyboardButton(text="Назад", callback_data="master_menu")]
-        ])
-
-        await c.message.edit_text("Выберите действие:", reply_markup=markup)
-    except Exception as e:
-        logger.error(f"Ошибка в обработчике 'windows': {e}")
-        markup = await main_menu(c.from_user.id)  # Возврат в главное меню в случае ошибки
-        await c.message.edit_text(f"Произошла ошибка: {str(e)}", reply_markup=markup)
-
+    """Меню управления расписанием."""
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Управление расписанием", callback_data="manage_schedule")],
+            [InlineKeyboardButton(text="Назад", callback_data="main_menu")]
+        ]
+    )
+    await c.message.edit_text("Выберите действие:", reply_markup=markup)

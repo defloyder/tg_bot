@@ -27,6 +27,7 @@ router_admin = Router(name="admin")
 
 ADMIN_ID = [475953677, 962757762]
 
+
 class PriceListState(StatesGroup):
     waiting_for_description = State()
     waiting_for_photo = State()
@@ -288,15 +289,27 @@ async def view_booking_details(callback_query: CallbackQuery):
                 f"**ID записи:** {booking.booking_id}\n"
                 f"**Дата и время:** {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')}\n"
                 f"**Мастер:** {booking.master_name}\n"
-                f"**Пользователь (ID):** {booking.user_id}\n"
+            )
+
+            try:
+                user_display_name = callback_query.from_user.full_name
+            except AttributeError:
+                user_display_name = booking.user.username if booking.user and booking.user.username else "Неизвестный пользователь"
+
+            details += (
+                f"**Пользователь:** [{user_display_name}]\n"
+                f"ID клиента: <a href='tg://user?id={booking.user_id}'> {booking.user_id}</a>\n"
                 f"**Статус:** {status}\n"
             )
+
+            logger.info(f"Детали записи: {details}")
+
             buttons = []
             if status == "Активная" and booking.booking_datetime > datetime.now():
                 cancel_button = InlineKeyboardButton(
                     text="Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}"
                 )
-                buttons.append([cancel_button])  # Кнопка отмены добавляется в новый ряд
+                buttons.append([cancel_button])
 
             buttons.append([InlineKeyboardButton(text="Назад", callback_data="all_booking_history")])
 
@@ -511,7 +524,8 @@ async def show_price_list(event: Union[Message, CallbackQuery], state: FSMContex
                         logger.error(f"Ошибка редактирования сообщения с прайс-листом: {e}")
                         price_message_id = None
                 if not price_message_id:
-                    price_message = await bot.send_photo(chat_id, photo=input_file, caption=description, reply_markup=markup)
+                    price_message = await bot.send_photo(chat_id, photo=input_file, caption=description,
+                                                         reply_markup=markup)
                     price_message_id = price_message.message_id
             else:
                 logger.warning(f"Файл фотографии не найден: {price_photo}")
@@ -552,6 +566,7 @@ async def show_price_list(event: Union[Message, CallbackQuery], state: FSMContex
             await event.answer(error_message)
         elif isinstance(event, CallbackQuery):
             await event.message.answer(error_message)
+
 
 @router_admin.message(lambda message: isinstance(message.text, str) and message.text.lower() == 'get_price_list')
 async def callback_get_price_list(callback_query: CallbackQuery, state: FSMContext):

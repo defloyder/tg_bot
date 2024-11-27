@@ -253,7 +253,7 @@ async def process_description_edit(message: Message, state: FSMContext):
             if new_description:
                 master.master_description = new_description
             await state.update_data(master_description=new_description)
-            await message.answer("Теперь отправьте новое фото мастера (или напишите 'пропустить' для пропуска):")
+            await message.answer("Теперь отправьте новое фото мастера:")
             await state.set_state(EditMasterStates.waiting_for_photo)
 
     @router_master.message(EditMasterStates.waiting_for_photo)
@@ -417,7 +417,7 @@ async def show_master_info(callback_query: CallbackQuery):
                 await callback_query.answer("Мастер не найден.", show_alert=True)
                 return
 
-            master_info = f"Имя: {master.master_name}\nОписание: {master.master_description}"
+            master_info = f" {master.master_name}\n {master.master_description}"
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="Назад", callback_data="masters")]
             ])

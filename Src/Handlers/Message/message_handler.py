@@ -7,13 +7,11 @@ from logger_config import logger
 router_chat = Router(name="chat")
 
 
-# Состояния диалога
 class ChatStates(StatesGroup):
     user_chatting = State()
     master_chatting = State()
 
 
-# Начало чата пользователем
 @router_chat.callback_query(lambda c: c.data.startswith("write_to_master_"))
 async def initiate_chat_with_master(callback_query: CallbackQuery, state: FSMContext):
     master_id = callback_query.data.split("_")[-1]
@@ -26,7 +24,6 @@ async def initiate_chat_with_master(callback_query: CallbackQuery, state: FSMCon
             )
         )
 
-        # Устанавливаем состояние и сохраняем ID мастера
         await state.set_state(ChatStates.user_chatting)
         await state.update_data(chat_with_master=master_id)
 
@@ -34,8 +31,6 @@ async def initiate_chat_with_master(callback_query: CallbackQuery, state: FSMCon
         logger.error(f"Ошибка при начале чата с мастером {master_id}: {e}")
         await callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
 
-
-# Пользователь отправляет сообщение мастеру
 @router_chat.message(ChatStates.user_chatting)
 async def user_send_message(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -46,7 +41,6 @@ async def user_send_message(message: Message, state: FSMContext):
         return
 
     try:
-        # Отправляем сообщение мастеру
         await message.bot.send_message(
             master_id,
             f"Сообщение от пользователя {message.from_user.full_name}:\n{message.text}",
@@ -70,7 +64,6 @@ async def master_initiate_chat(callback_query: CallbackQuery, state: FSMContext)
     user_id = callback_query.data.split("_")[-1]
 
     try:
-        # Оповещаем мастера о начале диалога
         await callback_query.message.answer(
             "Вы можете ответить пользователю. После каждого сообщения вы сможете завершить диалог.",
             reply_markup=InlineKeyboardMarkup(
@@ -78,7 +71,6 @@ async def master_initiate_chat(callback_query: CallbackQuery, state: FSMContext)
             )
         )
 
-        # Устанавливаем состояние и сохраняем ID пользователя
         await state.set_state(ChatStates.master_chatting)
         await state.update_data(chat_with_user=user_id)
 
@@ -87,7 +79,6 @@ async def master_initiate_chat(callback_query: CallbackQuery, state: FSMContext)
         await callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
-# Мастер отправляет сообщение пользователю
 @router_chat.message(ChatStates.master_chatting)
 async def master_send_message(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -98,7 +89,6 @@ async def master_send_message(message: Message, state: FSMContext):
         return
 
     try:
-        # Пересылаем сообщение пользователю
         await message.bot.send_message(
             user_id,
             f"Сообщение от мастера {message.from_user.full_name}:\n{message.text}",
@@ -111,7 +101,6 @@ async def master_send_message(message: Message, state: FSMContext):
         await message.answer("Не удалось отправить сообщение пользователю. Попробуйте позже.")
 
 
-# Завершение диалога мастером
 @router_chat.callback_query(lambda c: c.data == "end_master_chat")
 async def end_master_chat(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
