@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery
 
 from database import Master, Booking
 from database.database import SessionFactory
+from database.models import MasterSchedule, UserSchedule
 from database.repository import create_master
 from logger_config import logger
 from menu import ADMIN_ID, main_menu
@@ -39,7 +40,7 @@ async def start_adding_master(callback_query: CallbackQuery, state: FSMContext):
     user_id = callback_query.from_user.id
     if user_id in ADMIN_ID:
         await callback_query.answer()
-        await callback_query.message.edit_text("Введите уникальный ID мастера (или напишите 'отмена' для отмены):")
+        await callback_query.message.edit_text("✍️ Введите уникальный ID мастера (или напишите 'отмена' для отмены):")
         await state.set_state(AddMasterStates.waiting_for_id)
         logger.info(f"Администратор {user_id} начал добавление нового мастера.")
     else:
@@ -50,7 +51,7 @@ async def start_adding_master(callback_query: CallbackQuery, state: FSMContext):
 async def process_id(message: Message, state: FSMContext):
     if message.text.lower() == "отмена":
         await state.clear()
-        await message.answer("Процесс добавления мастера отменен.")
+        await message.answer("❌ Процесс добавления мастера отменен.")
         return
 
     try:
@@ -58,17 +59,17 @@ async def process_id(message: Message, state: FSMContext):
         if master_id <= 0:
             raise ValueError("ID должен быть положительным числом.")
     except ValueError:
-        await message.answer("Некорректный ID. Пожалуйста, введите положительное целое число.")
+        await message.answer("⚠️ Некорректный ID. Пожалуйста, введите положительное целое число.")
         return
 
     with SessionFactory() as session:
         existing_master = session.query(Master).filter(Master.master_id == master_id).first()
         if existing_master:
-            await message.answer("Мастер с таким ID уже существует. Введите другой ID.")
+            await message.answer("⚠️ Мастер с таким ID уже существует. Введите другой ID.")
             return
 
     await state.update_data(master_id=master_id)
-    await message.answer("Введите имя мастера (или напишите 'отмена' для отмены):")
+    await message.answer("✍️ Введите имя мастера (или напишите 'отмена' для отмены):")
     await state.set_state(AddMasterStates.waiting_for_name)
 
 
@@ -76,24 +77,23 @@ async def process_id(message: Message, state: FSMContext):
 async def process_name(message: Message, state: FSMContext):
     if message.text.lower() == "отмена":
         await state.clear()
-        await message.answer("Процесс добавления мастера отменен.")
+        await message.answer("❌ Процесс добавления мастера отменен.")
         return
 
     master_name = message.text.strip()
     if not master_name:
-        await message.answer("Имя не может быть пустым. Попробуйте снова.")
+        await message.answer("⚠️ Имя не может быть пустым. Попробуйте снова.")
         return
 
     await state.update_data(master_name=master_name)
-    await message.answer("Теперь введите описание мастера (или напишите 'пропустить' для пропуска):")
+    await message.answer("📝 Теперь введите описание мастера (или напишите 'пропустить' для пропуска):")
     await state.set_state(AddMasterStates.waiting_for_description)
-
 
 @router_master.message(AddMasterStates.waiting_for_description)
 async def process_description(message: Message, state: FSMContext):
     if message.text.lower() == "отмена":
         await state.clear()
-        await message.answer("Процесс добавления мастера отменен.")
+        await message.answer("❌ Процесс добавления мастера отменен.")
         return
 
     description = message.text.strip()
@@ -101,7 +101,7 @@ async def process_description(message: Message, state: FSMContext):
         description = "Описание не задано"
 
     await state.update_data(master_description=description)
-    await message.answer("Отправьте фото мастера:")
+    await message.answer("📸 Отправьте фото мастера:")
     await state.set_state(AddMasterStates.waiting_for_photo)
 
 
@@ -109,16 +109,16 @@ async def process_description(message: Message, state: FSMContext):
 async def process_photo(message: Message, state: FSMContext):
     if message.text and message.text.lower() == "отмена":
         await state.clear()
-        await message.answer("Процесс добавления мастера отменен.")
+        await message.answer("❌ Процесс добавления мастера отменен.")
         return
 
     if message.photo:
         photo_id = message.photo[-1].file_id
         await state.update_data(master_photo=photo_id)
-        await message.answer("Мастер добавлен! Подтвердите, если всё верно (да/нет):")
+        await message.answer("✅ Мастер добавлен! Подтвердите, если всё верно (да/нет):")
         await state.set_state(AddMasterStates.confirmation)
     else:
-        await message.answer("Пожалуйста, отправьте фото.")
+        await message.answer("⚠️ Пожалуйста, отправьте фото.")
 
 
 @router_master.message(AddMasterStates.confirmation)
@@ -327,7 +327,12 @@ async def delete_master(callback_query: CallbackQuery, state: FSMContext):
 @router_master.callback_query(lambda c: c.data.startswith("confirm_delete_"))
 async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMContext):
     if callback_query.from_user.id in ADMIN_ID:
-        master_id = int(callback_query.data.split("_")[2])
+        try:
+            master_id = int(callback_query.data.split("_")[2])  # Извлекаем master_id из callback
+        except (IndexError, ValueError) as e:
+            logger.error(f"Ошибка при извлечении master_id из callback {callback_query.data}: {e}")
+            await callback_query.answer("Ошибка при обработке запроса. Попробуйте снова.", show_alert=True)
+            return
 
         logger.info(f"Админ {callback_query.from_user.id} инициировал удаление мастера с ID {master_id}")
 
@@ -343,7 +348,19 @@ async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMConte
                     return
 
                 try:
-                    # Удаляем мастера, если все его записи отменены или не активны
+                    # Удаляем все расписания мастера
+                    session.query(MasterSchedule).filter(MasterSchedule.master_id == master_id).delete()
+                    logger.info(f"Все расписания мастера {master.master_name} были удалены.")
+
+                    # Удаляем все записи о пользователях, связанных с этим мастером, если необходимо
+                    session.query(UserSchedule).filter(UserSchedule.user_id == master_id).delete()
+                    logger.info(f"Все записи пользователей для мастера {master.master_name} были удалены.")
+
+                    # Удаляем все активные бронирования мастера (если такие есть)
+                    session.query(Booking).filter(Booking.master_id == master_id).delete()
+                    logger.info(f"Все бронирования мастера {master.master_name} были удалены.")
+
+                    # Удаляем мастера
                     session.delete(master)
                     session.commit()
 
@@ -360,13 +377,12 @@ async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMConte
         logger.warning(f"Пользователь {callback_query.from_user.id} пытался удалить мастера, но не является администратором.")
 
 
-
 @router_master.callback_query(lambda c: c.data == "main_menu")
 async def back_to_main_menu(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
 
     keyboard = main_menu(user_id)
-    await callback_query.message.edit_text("Главное меню:", reply_markup=keyboard)
+    await callback_query.message.edit_text("🏠 Главное меню:", reply_markup=keyboard)
 
 
 @router_master.callback_query(lambda c: c.data == "masters")
@@ -376,32 +392,32 @@ async def show_masters_list(callback_query: CallbackQuery):
 
     if masters:
         buttons = [
-            [InlineKeyboardButton(text=master.master_name, callback_data=f"info_master_{master.master_id}")]
+            [InlineKeyboardButton(text=f"⚜️️ {master.master_name}", callback_data=f"info_master_{master.master_id}")]
             for master in masters
         ]
-        buttons.append([InlineKeyboardButton(text="Назад", callback_data="main_menu")])
+        buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")])
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         if callback_query.message.text:
             try:
                 await callback_query.message.edit_text(
-                    "Выберите мастера, чтобы узнать подробности:",
+                    "🔍 Выберите мастера, чтобы узнать подробности:",
                     reply_markup=keyboard
                 )
             except Exception as e:
                 logger.error(f"Ошибка при редактировании текста: {e}")
-                await callback_query.answer("Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
+                await callback_query.answer("⚠️ Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
         elif callback_query.message.photo or callback_query.message.video or callback_query.message.document:
             try:
                 await callback_query.message.delete()
                 await callback_query.message.answer(
-                    "Выберите мастера, чтобы узнать подробности:",
+                    "🔍 Выберите мастера, чтобы узнать подробности:",
                     reply_markup=keyboard
                 )
             except Exception as e:
                 logger.error(f"Ошибка при добавлении текста к медиа: {e}")
-                await callback_query.answer("Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
+                await callback_query.answer("⚠️ Не удалось обновить сообщение. Попробуйте снова.", show_alert=True)
     else:
-        await callback_query.message.edit_text("Нет доступных мастеров.")
+        await callback_query.message.edit_text("❌ Нет доступных мастеров.")
 
 
 @router_master.callback_query(lambda c: c.data.startswith("info_master_"))
@@ -414,12 +430,12 @@ async def show_master_info(callback_query: CallbackQuery):
             master = session.query(Master).filter(Master.master_id == master_id).first()
 
             if not master:
-                await callback_query.answer("Мастер не найден.", show_alert=True)
+                await callback_query.answer("❌ Мастер не найден.", show_alert=True)
                 return
 
-            master_info = f" {master.master_name}\n {master.master_description}"
+            master_info = f"⚜️ {master.master_name}\n📝 {master.master_description}"
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="Назад", callback_data="masters")]
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="masters")]
             ])
 
             if master.master_photo:
@@ -436,12 +452,7 @@ async def show_master_info(callback_query: CallbackQuery):
                 await callback_query.message.edit_text(master_info, reply_markup=keyboard)
     except (IndexError, ValueError):
         logger.error(f"Некорректные данные callback: {callback_query.data}")
-        await callback_query.answer("Некорректные данные. Попробуйте снова.", show_alert=True)
+        await callback_query.answer("⚠️ Некорректные данные. Попробуйте снова.", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка при отображении информации о мастере: {e}")
-        await callback_query.answer("Произошла ошибка. Попробуйте снова.", show_alert=True)
-
-
-@router_master.callback_query(lambda c: c.data.startswith("master_info_"))
-async def show_master_info(callback_query: CallbackQuery):
-    logger.debug(f"Получен callback: {callback_query.data}")
+        await callback_query.answer("⚠️ Произошла ошибка. Попробуйте снова.", show_alert=True)

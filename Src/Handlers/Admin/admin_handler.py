@@ -35,16 +35,15 @@ class PriceListState(StatesGroup):
 
 price_message_id = None
 
-
 @router_admin.callback_query(lambda c: c.data == "admin_panel")
 async def process_callback_admin_panel(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     if user_id in ADMIN_ID:
         await callback_query.answer()
-        await callback_query.message.edit_text("Административная панель:", reply_markup=admin_panel())
+        await callback_query.message.edit_text("🛠️ Административная панель:", reply_markup=admin_panel())
         logger.info(f"Администратор {user_id} открыл административную панель.")
     else:
-        await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
+        await callback_query.answer("🚫 У вас нет доступа к этой функции.", show_alert=True)
         logger.warning(f"Пользователь {user_id} попытался открыть административную панель.")
 
 
@@ -69,19 +68,17 @@ async def main_menu_handler(callback_query: CallbackQuery):
     # Проверяем, существует ли сообщение, перед тем как редактировать
     if callback_query.message:
         try:
-            # Получаем меню для пользователя (с использованием await, так как main_menu асинхронная функция)
+            # Получаем меню для пользователя
             reply_markup = await main_menu(user_id)
 
             # Редактируем сообщение с новым текстом и клавиатурой
             await callback_query.message.edit_text(
-                "Вы в главном меню. Выберите нужную опцию.",
+                "🏠 Вы в главном меню. Выберите нужную опцию.",
                 reply_markup=reply_markup
             )
         except aiogram.exceptions.TelegramBadRequest as e:
-            # Это ошибка редактирования, вероятно, сообщение уже удалено
             logger.error(f"Ошибка при редактировании сообщения: {e}")
         except Exception as e:
-            # Обрабатываем все остальные ошибки
             logger.error(f"Не удалось отредактировать сообщение: {e}")
     else:
         logger.error(f"Сообщение для редактирования не найдено.")
@@ -103,7 +100,7 @@ async def process_all_booking_history(callback_query: CallbackQuery):
 
             if not all_bookings:
                 await callback_query.message.edit_text(
-                    "В базе данных нет записей.",
+                    "📅 В базе данных нет записей.",
                     reply_markup=admin_panel()
                 )
                 return
@@ -117,15 +114,15 @@ async def process_all_booking_history(callback_query: CallbackQuery):
             buttons = []
             for booking in sorted_bookings:
                 status = (
-                    "Отменена" if booking.status == "cancelled" else
-                    "Прошедшая" if booking.booking_datetime < datetime.now() else
-                    "Активная"
+                    "❌ Отменена" if booking.status == "cancelled" else
+                    "🟠   Прошедшая" if booking.booking_datetime < datetime.now() else
+                    "🟢 Активная"
                 )
 
                 cancel_button = None
                 if booking.status == "active" and booking.booking_datetime > datetime.now():
                     cancel_button = InlineKeyboardButton(
-                        text="Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}"
+                        text="❌ Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}"
                     )
 
                 button_row = [
@@ -141,24 +138,24 @@ async def process_all_booking_history(callback_query: CallbackQuery):
                 buttons.append(button_row)
 
             buttons.append(
-                [InlineKeyboardButton(text="Экспортировать в Excel", callback_data="export_bookings_to_excel")])
-            buttons.append([InlineKeyboardButton(text="Удалить все записи", callback_data="delete_all_bookings")])
-            buttons.append([InlineKeyboardButton(text="Назад", callback_data="admin_panel")])
+                [InlineKeyboardButton(text="📊 Экспортировать в Excel", callback_data="export_bookings_to_excel")])
+            buttons.append([InlineKeyboardButton(text="🗑️ Удалить все записи", callback_data="delete_all_bookings")])
+            buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_panel")])
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            await callback_query.message.edit_text("История всех записей (нажмите для подробностей):",
+            await callback_query.message.edit_text("📜 История всех записей (нажмите для подробностей):",
                                                    reply_markup=markup)
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy при загрузке всех записей: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке всех записей. Попробуйте позже.",
+            "⚠️ Произошла ошибка при загрузке всех записей. Попробуйте позже.",
             reply_markup=admin_panel()
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка при загрузке всех записей: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке всех записей. Попробуйте позже.",
+            "⚠️ Произошла ошибка при загрузке всех записей. Попробуйте позже.",
             reply_markup=admin_panel()
         )
 
@@ -172,7 +169,7 @@ async def delete_all_bookings(callback_query: CallbackQuery):
             session.commit()
 
             await callback_query.message.edit_text(
-                "Все записи были удалены.",
+                "🧹 Все записи были удалены.",
                 reply_markup=admin_panel()
             )
             logger.info("Все записи были удалены администратором.")
@@ -180,16 +177,15 @@ async def delete_all_bookings(callback_query: CallbackQuery):
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy при удалении всех записей: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при удалении всех записей. Попробуйте позже.",
+            "⚠️ Произошла ошибка при удалении всех записей. Попробуйте позже.",
             reply_markup=admin_panel()
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка при удалении всех записей: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при удалении всех записей. Попробуйте позже.",
+            "⚠️ Произошла ошибка при удалении всех записей. Попробуйте позже.",
             reply_markup=admin_panel()
         )
-
 
 @router_admin.callback_query(lambda c: c.data == "export_bookings_to_excel")
 async def export_bookings_to_excel(callback_query: CallbackQuery):
@@ -204,7 +200,7 @@ async def export_bookings_to_excel(callback_query: CallbackQuery):
             ).join(Master, Master.master_id == Booking.master_id).all()
 
             if not all_bookings:
-                await callback_query.answer("Нет записей для экспорта.", show_alert=True)
+                await callback_query.answer("⚠️ Нет записей для экспорта.", show_alert=True)
                 return
 
             data = [
@@ -247,12 +243,11 @@ async def export_bookings_to_excel(callback_query: CallbackQuery):
                 caption=f"Экспорт истории записей выполнен: {file_name}"
             )
     except Exception as e:
-        logger.error(f"Ошибка при экспорте записей в Excel: {e}")
+        logger.error(f"⚠️ Ошибка при экспорте записей в Excel: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при экспорте записей. Попробуйте позже.",
+            "⚠️ Произошла ошибка при экспорте записей. Попробуйте позже.",
             reply_markup=admin_panel()
         )
-
 
 @router_admin.callback_query(lambda c: c.data.startswith("view_booking_"))
 async def view_booking_details(callback_query: CallbackQuery):
@@ -274,21 +269,21 @@ async def view_booking_details(callback_query: CallbackQuery):
 
             if not booking:
                 await callback_query.message.edit_text(
-                    "Запись не найдена. Возможно, она была удалена.",
+                    "❌ Запись не найдена. Возможно, она была удалена.",
                     reply_markup=admin_panel()
                 )
                 return
 
             status = (
-                "Отменена" if booking.status == "cancelled" else
-                "Прошедшая" if booking.booking_datetime < datetime.now() else
-                "Активная"
+                "⛔ Отменена" if booking.status == "cancelled" else
+                "🟠 Прошедшая" if booking.booking_datetime < datetime.now() else
+                "🟢 Активная"
             )
 
             details = (
-                f"**ID записи:** {booking.booking_id}\n"
-                f"**Дата и время:** {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')}\n"
-                f"**Мастер:** {booking.master_name}\n"
+                f"**🆔 ID записи:** {booking.booking_id}\n"
+                f"**📅 Дата и время:** {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')}\n"
+                f"**⚜️ Мастер:** {booking.master_name}\n"
             )
 
             try:
@@ -297,21 +292,21 @@ async def view_booking_details(callback_query: CallbackQuery):
                 user_display_name = booking.user.username if booking.user and booking.user.username else "Неизвестный пользователь"
 
             details += (
-                f"**Пользователь:** [{user_display_name}]\n"
-                f"ID клиента: <a href='tg://user?id={booking.user_id}'> {booking.user_id}</a>\n"
-                f"**Статус:** {status}\n"
+                f"**👤 Пользователь:** [{user_display_name}]\n"
+                f"**💬 ID клиента:** <a href='tg://user?id={booking.user_id}'> {booking.user_id}</a>\n"
+                f"**🔖 Статус:** {status}\n"
             )
 
             logger.info(f"Детали записи: {details}")
 
             buttons = []
-            if status == "Активная" and booking.booking_datetime > datetime.now():
+            if status == "🟢 Активная" and booking.booking_datetime > datetime.now():
                 cancel_button = InlineKeyboardButton(
-                    text="Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}"
+                    text="❌ Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}"
                 )
                 buttons.append([cancel_button])
 
-            buttons.append([InlineKeyboardButton(text="Назад", callback_data="all_booking_history")])
+            buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="all_booking_history")])
 
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
             await callback_query.message.edit_text(details, reply_markup=markup)
@@ -319,13 +314,13 @@ async def view_booking_details(callback_query: CallbackQuery):
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy при загрузке записи {booking_id}: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке информации о записи. Попробуйте позже.",
+            "⚠️ Произошла ошибка при загрузке информации о записи. Попробуйте позже.",
             reply_markup=admin_panel()
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка при загрузке записи {booking_id}: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке информации о записи. Попробуйте позже.",
+            "⚠️ Произошла ошибка при загрузке информации о записи. Попробуйте позже.",
             reply_markup=admin_panel()
         )
 
@@ -346,12 +341,12 @@ async def cancel_booking(callback_query: CallbackQuery):
             ).join(Master).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
-                await callback_query.answer("Запись с таким ID не найдена.", show_alert=True)
+                await callback_query.answer("❌ Запись с таким ID не найдена.", show_alert=True)
                 logger.error(f"Запись с ID {booking_id} не найдена для отмены.")
                 return
 
             if booking.status == "cancelled":
-                await callback_query.answer("Запись уже отменена.", show_alert=True)
+                await callback_query.answer("⚠️ Запись уже отменена.", show_alert=True)
                 return
 
             session.execute(
@@ -377,37 +372,37 @@ async def cancel_booking(callback_query: CallbackQuery):
 
             if is_slot_freed:
                 logger.debug(
-                    f"Время {booking_datetime.time()} на {booking_date} для мастера {master_id} теперь свободно.")
+                    f"⏰ Время {booking_datetime.time()} на {booking_date} для мастера {master_id} теперь свободно.")
 
             try:
                 if booking.user_id:
                     await callback_query.bot.send_message(
                         booking.user_id,
-                        f"Ваша запись к мастеру {master_name} на {booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена админом.",
+                        f"🔔 Ваша запись к мастеру {master_name} на {booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена админом.",
                         reply_markup=None
                     )
-                    logger.info(f"Уведомление отправлено пользователю {booking.user_id}.")
+                    logger.info(f"✅ Уведомление отправлено пользователю {booking.user_id}.")
                 else:
-                    logger.warning(f"Не удалось отправить уведомление. Пользователь с ID {booking.user_id} не найден.")
+                    logger.warning(f"⚠️ Не удалось отправить уведомление. Пользователь с ID {booking.user_id} не найден.")
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления пользователю {booking.user_id}: {e}")
 
-            await callback_query.answer("Запись успешно отменена.")
+            await callback_query.answer("✅ Запись успешно отменена.")
             await callback_query.message.edit_text(
-                f"Запись с ID {booking_id} была успешно отменена.",
+                f"🔴 Запись с ID {booking_id} была успешно отменена.",
                 reply_markup=admin_panel()
             )
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy при отмене записи {booking_id}: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при отмене записи. Попробуйте позже.",
+            "⚠️ Произошла ошибка при отмене записи. Попробуйте позже.",
             reply_markup=admin_panel()
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка при отмене записи {booking_id}: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при отмене записи. Попробуйте позже.",
+            "⚠️ Произошла ошибка при отмене записи. Попробуйте позже.",
             reply_markup=admin_panel()
         )
 
@@ -415,18 +410,18 @@ async def cancel_booking(callback_query: CallbackQuery):
 @router_admin.callback_query(lambda c: c.data == "edit_price_list")
 async def edit_price_list_start(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer()
-    await callback_query.message.edit_text("Введите описание для прайс-листа:")
+    await callback_query.message.edit_text("📝 Введите описание для прайс-листа:")
     await state.set_state(PriceListState.waiting_for_description)
 
 
 @router_admin.message(PriceListState.waiting_for_description)
 async def process_price_list_description(message: Message, state: FSMContext):
     if not message.text:
-        await message.answer("Пожалуйста, отправьте текстовое описание для прайс-листа.")
+        await message.answer("❗ Пожалуйста, отправьте текстовое описание для прайс-листа.")
         return
 
     await state.update_data(description=message.text)
-    await message.answer("Теперь отправьте фотографию для прайс-листа:")
+    await message.answer("📸 Теперь отправьте фотографию для прайс-листа:")
     await state.set_state(PriceListState.waiting_for_photo)
 
 
@@ -436,7 +431,7 @@ async def process_price_list_photo(message: Message, state: FSMContext):
     description = data.get("description")
 
     if not message.photo:
-        await message.answer("Пожалуйста, отправьте фотографию для прайс-листа.")
+        await message.answer("❗ Пожалуйста, отправьте фотографию для прайс-листа.")
         return
 
     photo = message.photo[-1]
@@ -465,30 +460,24 @@ async def process_price_list_photo(message: Message, state: FSMContext):
                 chat_id=message.chat.id,
                 message_id=price_message_id
             )
-            await message.answer("Прайс-лист успешно обновлён!")
+            await message.answer("✅ Прайс-лист успешно обновлён!")
         else:
-            await message.answer("Прайс-лист успешно обновлён, но ещё не был отображен.")
+            await message.answer("✅ Прайс-лист успешно обновлён, но ещё не был отображен.")
 
     except Exception as e:
-        logger.error(f"Ошибка при обновлении прайс-листа: {e}")
-        await message.answer("Произошла ошибка при обновлении прайс-листа.")
+        logger.error(f"❌ Ошибка при обновлении прайс-листа: {e}")
+        await message.answer("⚠️ Произошла ошибка при обновлении прайс-листа.")
     finally:
         await state.clear()
 
 
-@router_admin.message(lambda message: message.text and message.text.lower() == 'get_price_list')
-@router_admin.callback_query(lambda callback: callback.data == 'get_price_list')
-async def show_price_list(event: Union[Message, CallbackQuery], state: FSMContext):
+# Улучшенный обработчик для получения прайс-листа
+@router_admin.callback_query(lambda c: c.data == "get_price_list")
+async def show_price_list(callback_query: CallbackQuery, state: FSMContext):
     global price_message_id
     try:
-        # Определяем, кто вызвал: сообщение или callback
-        if isinstance(event, Message):
-            chat_id = event.chat.id
-            bot = event.bot
-        elif isinstance(event, CallbackQuery):
-            chat_id = event.message.chat.id
-            bot = event.bot
-            await event.answer()
+        if price_message_id:
+            await callback_query.answer()
 
         with SessionFactory() as session:
             price_list = session.query(PriceList).first()
@@ -498,75 +487,54 @@ async def show_price_list(event: Union[Message, CallbackQuery], state: FSMContex
             price_photo = price_list.price_photo
             logger.debug(f"Прайс-лист найден. Описание: {description}, Фото: {price_photo}")
 
-            back_button = InlineKeyboardButton(text="Назад", callback_data="main_menu")
+            back_button = InlineKeyboardButton(text=f"⬅️ Назад", callback_data="main_menu")
             buttons = [[back_button]]
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            # Проверяем наличие файла фото
             if os.path.exists(price_photo):
                 input_file = FSInputFile(price_photo, filename=os.path.basename(price_photo))
-                logger.debug(f"Фото найдено: {price_photo}")
 
-                # Редактируем или отправляем сообщение
                 if price_message_id:
-                    try:
-                        await bot.edit_message_media(
-                            media=types.InputMediaPhoto(input_file, caption=description),
-                            chat_id=chat_id,
-                            message_id=price_message_id
-                        )
-                        await bot.edit_message_reply_markup(
-                            chat_id=chat_id,
-                            message_id=price_message_id,
-                            reply_markup=markup
-                        )
-                    except aiogram.exceptions.TelegramBadRequest as e:
-                        logger.error(f"Ошибка редактирования сообщения с прайс-листом: {e}")
-                        price_message_id = None
-                if not price_message_id:
-                    price_message = await bot.send_photo(chat_id, photo=input_file, caption=description,
-                                                         reply_markup=markup)
+                    await callback_query.message.bot.edit_message_media(
+                        media=types.InputMediaPhoto(input_file, caption=f"📋 Прайс-лист: {description}"),
+                        chat_id=callback_query.message.chat.id,
+                        message_id=price_message_id,
+                        reply_markup=markup
+                    )
+                else:
+                    price_message = await callback_query.message.bot.send_photo(
+                        callback_query.message.chat.id,
+                        input_file,
+                        caption=f"📋: {description}",
+                        reply_markup=markup
+                    )
                     price_message_id = price_message.message_id
             else:
-                logger.warning(f"Файл фотографии не найден: {price_photo}")
-                text = f"Прайс-лист: {description}\nФото не найдено."
                 if price_message_id:
-                    try:
-                        await bot.edit_message_text(
-                            text=text,
-                            chat_id=chat_id,
-                            message_id=price_message_id,
-                            reply_markup=markup
-                        )
-                    except aiogram.exceptions.TelegramBadRequest as e:
-                        logger.error(f"Ошибка редактирования текстового сообщения: {e}")
-                        price_message_id = None
-                if not price_message_id:
-                    await bot.send_message(chat_id, text, reply_markup=markup)
-        else:
-            logger.info("Прайс-лист не найден в базе данных.")
-            text = "Прайс-лист не найден в базе данных."
-            if price_message_id:
-                try:
-                    await bot.edit_message_text(
-                        text=text,
-                        chat_id=chat_id,
-                        message_id=price_message_id
+                    await callback_query.message.bot.edit_message_text(
+                        text=f"📋: {description}",
+                        chat_id=callback_query.message.chat.id,
+                        message_id=price_message_id,
+                        reply_markup=markup
                     )
-                except aiogram.exceptions.TelegramBadRequest as e:
-                    logger.error(f"Ошибка редактирования сообщения: {e}")
-                    price_message_id = None
-            if not price_message_id:
-                await bot.send_message(chat_id, text)
+                else:
+                    await callback_query.message.bot.send_message(
+                        callback_query.message.chat.id,
+                        text=f"📋 Прайс-лист: {description}",
+                        reply_markup=markup
+                    )
+        else:
+            await callback_query.message.edit_text(
+                "⚠️ Прайс-лист не найден.",
+                reply_markup=admin_panel()
+            )
 
     except Exception as e:
         logger.error(f"Ошибка при получении прайс-листа: {e}")
-        error_message = "Произошла ошибка при получении прайс-листа. Пожалуйста, попробуйте позже."
-        if isinstance(event, Message):
-            await event.answer(error_message)
-        elif isinstance(event, CallbackQuery):
-            await event.message.answer(error_message)
-
+        await callback_query.message.edit_text(
+            "⚠️ Произошла ошибка при загрузке прайс-листа. Попробуйте позже.",
+            reply_markup=admin_panel()
+        )
 
 @router_admin.message(lambda message: isinstance(message.text, str) and message.text.lower() == 'get_price_list')
 async def callback_get_price_list(callback_query: CallbackQuery, state: FSMContext):

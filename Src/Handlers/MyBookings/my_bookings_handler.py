@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 
 from aiogram import Router
+from aiogram.client import bot
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,8 +20,11 @@ router_bookings = Router(name="bookings")
 async def process_my_bookings(callback_query: CallbackQuery):
     """Обработчик для кнопки 'Мои записи'."""
     await callback_query.answer()
-    await callback_query.message.edit_text("Выберите опцию:", reply_markup=my_bookings_menu())
-
+    await callback_query.message.edit_text(
+        "<b>Выберите опцию:</b>",
+        reply_markup=my_bookings_menu(),
+        parse_mode="HTML"
+    )
 
 @router_bookings.callback_query(lambda c: c.data == "active_bookings")
 async def process_active_bookings(callback_query: CallbackQuery):
@@ -50,141 +54,136 @@ async def process_active_bookings(callback_query: CallbackQuery):
             # Обрабатываем результат
             if not active_bookings:
                 await callback_query.message.edit_text(
-                    "У вас нет активных записей.",
-                    reply_markup=back_to_my_bookings_menu()  # Используем кнопки для возвращения в "Мои записи"
+                    "ℹ <b>У вас нет активных записей.</b>",
+                    reply_markup=back_to_my_bookings_menu(),
+                    parse_mode="HTML"
                 )
                 return
 
             # Создаем кнопки для активных записей
             buttons = []
             for booking in active_bookings:
+                booking_date = booking.booking_datetime.strftime('%d.%m.%Y')
+                booking_time = booking.booking_datetime.strftime('%H:%M')
+
                 if is_master:
                     # Для мастера показываем имя клиента
                     user = session.query(User).filter(User.user_id == booking.user_id).first()
-                    user_name = user.username if user else "Неизвестно"
-                    label = f"Клиент: {user_name}"
+                    user_name = user.username if user else "<i>Неизвестно</i>"
+                    label = f"👤 Клиент: {user_name}"
                 else:
                     # Для пользователя показываем имя мастера
                     master = session.query(Master).filter(Master.master_id == booking.master_id).first()
-                    master_name = master.master_name if master else "Неизвестно"
-                    label = f"Мастер: {master_name}"
+                    master_name = master.master_name if master else "<i>Неизвестно</i>"
+                    label = f"✂ Мастер: {master_name}"
 
-                buttons.append(
-                    [InlineKeyboardButton(
-                        text=f"{booking.booking_datetime.strftime('%d.%m.%Y %H:%M')} - {label}",
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"📅 {booking_date} ⏰ {booking_time} - {label}",
                         callback_data=f"view_active_booking_{booking.booking_id}"
-                    )]
-                )
+                    )
+                ])
 
             # Добавляем кнопку "Назад"
-            buttons.append([InlineKeyboardButton(text="Назад", callback_data="my_bookings")])
+            buttons.append([InlineKeyboardButton(text="⬅ Назад", callback_data="my_bookings")])
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
             # Отправляем сообщение с кнопками
             await callback_query.message.edit_text(
-                "Ваши активные записи:",
-                reply_markup=markup
+                "<b>Ваши активные записи:</b>",
+                reply_markup=markup,
+                parse_mode="HTML"
             )
 
     except Exception as e:
-        logging.error(f"Ошибка при обработке активных записей: {e}")
+        logger.error(f"Ошибка при обработке активных записей: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке активных записей. Попробуйте позже.",
-            reply_markup=back_to_my_bookings_menu()  # В случае ошибки, возвращаем в меню с записями
+            "❌ <b>Произошла ошибка при загрузке активных записей</b>. Попробуйте позже.",
+            reply_markup=back_to_my_bookings_menu(),
+            parse_mode="HTML"
         )
 
 
 @router_bookings.callback_query(lambda c: c.data == "booking_history")
 async def process_user_history(callback_query: CallbackQuery):
-    """Обработчик для кнопки 'История записей' у пользователя."""
-    user_id = callback_query.from_user.id  # Получаем ID пользователя
+    """Обработчик для кнопки 'История записей'."""
+    user_id = callback_query.from_user.id
     current_time = datetime.now()
 
     try:
         with SessionFactory() as session:
-            # Проверяем, является ли пользователь мастером, путем поиска в таблице мастеров
+            # Проверяем, является ли пользователь мастером
             is_master = session.query(Master).filter(Master.master_id == user_id).first()
 
-            if is_master:  # Если пользователь — мастер, показываем историю для мастера
-                master_id = user_id
-                logger.debug(f"Пользователь с ID {user_id} является мастером. Запрос истории для мастера.")
-
+            if is_master:
                 # Получаем записи для мастера
                 user_history_bookings = session.query(Booking).filter(
-                    Booking.master_id == master_id,  # Фильтруем по master_id
-                    (Booking.booking_datetime < current_time) |  # Прошедшие записи
-                    (Booking.status == "cancelled")  # Отменённые записи
+                    Booking.master_id == user_id,
+                    (Booking.booking_datetime < current_time) |
+                    (Booking.status == "cancelled")
                 ).order_by(Booking.booking_datetime.desc()).all()
-
-            else:  # Если пользователь не мастер, показываем его собственную историю
-                logger.debug(f"Пользователь с ID {user_id} не является мастером. Запрос истории для пользователя.")
-
+            else:
                 # Получаем записи для пользователя
                 user_history_bookings = session.query(Booking).filter(
-                    Booking.user_id == user_id,  # Фильтруем по user_id
-                    (Booking.booking_datetime < current_time) |  # Прошедшие записи
-                    (Booking.status == "cancelled")  # Отменённые записи
+                    Booking.user_id == user_id,
+                    (Booking.booking_datetime < current_time) |
+                    (Booking.status == "cancelled")
                 ).order_by(Booking.booking_datetime.desc()).all()
-
-            logger.debug(
-                f"Запрос истории для пользователя {user_id}. Количество найденных записей: {len(user_history_bookings)}")
 
             if not user_history_bookings:
                 await callback_query.message.edit_text(
-                    "У вас ещё нет ни одной записи. Как только они появятся, вы сможете посмотреть их здесь.",
-                    reply_markup=back_to_my_bookings_menu()  # Синхронный вызов
+                    "ℹ <b>У вас ещё нет ни одной записи.</b> Как только они появятся, вы сможете посмотреть их здесь.",
+                    reply_markup=back_to_my_bookings_menu(),
+                    parse_mode="HTML"
                 )
                 return
 
             buttons = []
             for booking in user_history_bookings:
-                if is_master:  # Если мастер, выводим пользователя, который сделал запись
-                    user_name = session.query(User.username).filter(User.user_id == booking.user_id).first()
-                    user_name = user_name[0] if user_name else "Неизвестно"
-                    label = f"Пользователь: {user_name}"
-                else:  # Если обычный пользователь, показываем мастера
-                    master_name = session.query(Master.master_name).filter(
-                        Master.master_id == booking.master_id).first()
-                    master_name = master_name[0] if master_name else "Неизвестно"
-                    label = f"Мастер: {master_name}"
+                booking_date = booking.booking_datetime.strftime('%d.%m.%Y')
+                booking_time = booking.booking_datetime.strftime('%H:%M')
 
-                # Проверяем статус записи
-                if booking.status == "cancelled":
-                    status = "Отменена"
-                elif booking.booking_datetime < current_time:
-                    status = "Прошедшая"
+                if is_master:
+                    user = session.query(User).filter(User.user_id == booking.user_id).first()
+                    user_name = user.username if user else "<i>Неизвестно</i>"
+                    label = f"👤 Клиент: {user_name}"
                 else:
-                    status = "Неизвестный статус"
+                    master = session.query(Master).filter(Master.master_id == booking.master_id).first()
+                    master_name = master.master_name if master else "<i>Неизвестно</i>"
+                    label = f"✂ Мастер: {master_name}"
 
-                logger.debug(
-                    f"Запись: ID={booking.booking_id}, Статус={status}, {label}, Дата={booking.booking_datetime}")
+                status = "❌ Отменена" if booking.status == "cancelled" else "✅ Прошедшая"
 
-                # Создаем кнопку для каждой записи
-                buttons.append(
-                    [InlineKeyboardButton(
-                        text=f"{booking.booking_datetime.strftime('%d.%m.%Y %H:%M')} - {status} - {label}",
-                        callback_data="ignore"  # Плейсхолдер для кнопки
-                    )]
-                )
+                buttons.append([
+                    InlineKeyboardButton(
+                        text=f"📅 {booking_date} ⏰ {booking_time} - {status} - {label}",
+                        callback_data="ignore"  # Невзаимодействующая кнопка
+                    )
+                ])
 
-            buttons.append([InlineKeyboardButton(text="Назад", callback_data="my_bookings")])
+            buttons.append([InlineKeyboardButton(text="⬅ Назад", callback_data="my_bookings")])
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            await callback_query.message.edit_text("Ваша история записей:", reply_markup=markup)
+            await callback_query.message.edit_text(
+                "<b>История записей:</b>",
+                reply_markup=markup,
+                parse_mode="HTML"
+            )
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке вашей истории записей. Попробуйте позже.",
-            reply_markup=back_to_my_bookings_menu()  # Синхронный вызов
+            "❌ <b>Произошла ошибка при загрузке вашей истории записей</b>. Попробуйте позже.",
+            reply_markup=back_to_my_bookings_menu(),
+            parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке вашей истории записей. Попробуйте позже.",
-            reply_markup=back_to_my_bookings_menu()  # Синхронный вызов
+            "❌ <b>Произошла ошибка при загрузке вашей истории записей</b>. Попробуйте позже.",
+            reply_markup=back_to_my_bookings_menu(),
+            parse_mode="HTML"
         )
-
 
 @router_bookings.callback_query(lambda c: c.data.startswith("view_active_booking_"))
 async def process_view_active_booking(callback_query: CallbackQuery):
@@ -196,38 +195,68 @@ async def process_view_active_booking(callback_query: CallbackQuery):
             booking = session.query(Booking).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
-                await callback_query.message.edit_text("Запись не найдена.", reply_markup=back_to_my_bookings_menu())
+                await callback_query.message.edit_text("❌ <b>Запись не найдена</b>.",
+                                                       reply_markup=back_to_my_bookings_menu(),
+                                                       parse_mode="HTML")
                 return
 
-            # Получаем имя мастера
-            master_name = session.query(Master.master_name).filter(Master.master_id == booking.master_id).first()
-            master_name = master_name[0] if master_name else "Неизвестно"
+            # Определяем, является ли текущий пользователь мастером
+            is_master = session.query(Master).filter(Master.master_id == callback_query.from_user.id).first()
 
-            # Формируем кнопки для отмены или возврата
+            # Получаем данные записи
+            master = session.query(Master).filter(Master.master_id == booking.master_id).first()
+            master_name = master.master_name if master else "<i>Неизвестно</i>"
+
+            user = session.query(User).filter(User.user_id == booking.user_id).first()
+            user_display_name = user.username if user and user.username else "<i>Неизвестный пользователь</i>"
+
+            booking_date = booking.booking_datetime.strftime('%d.%m.%Y')
+            booking_time = booking.booking_datetime.strftime('%H:%M')
+
+            # Подготовка текста в зависимости от роли пользователя
+            if is_master:
+                # Если текущий пользователь — мастер, выводим информацию о клиенте
+                details = (
+                    f"<b>📅 Дата:</b> {booking_date}\n"
+                    f"<b>⏰ Время:</b> {booking_time}\n"
+                    f"<b>👤 Клиент:</b> {user_display_name}\n"
+                    f"<b>🔗 ID клиента:</b> <a href='tg://user?id={booking.user_id}'>{booking.user_id}</a>\n"
+                )
+            else:
+                # Если текущий пользователь — клиент, выводим информацию о мастере
+                details = (
+                    f"<b>📅 Дата:</b> {booking_date}\n"
+                    f"<b>⏰ Время:</b> {booking_time}\n"
+                    f"<b>✂ Мастер:</b> {master_name}\n"
+                )
+
+            # Формируем кнопки для действий
             buttons = [
-                [InlineKeyboardButton(text="Отменить", callback_data=f"cancel_booking_{booking.booking_id}")],
-                [InlineKeyboardButton(text="Назад", callback_data="active_bookings")]
+                [InlineKeyboardButton(text="❌ Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}")],
+                [InlineKeyboardButton(text="⬅ Назад", callback_data="active_bookings")]
             ]
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            # Отправляем сообщение с информацией о записи
-            await callback_query.message.edit_text(
-                f"Запись: {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')}\nМастер: {master_name}",
-                reply_markup=markup
-            )
+            # Отправляем сообщение с деталями записи
+            await callback_query.message.edit_text(details, reply_markup=markup, parse_mode="HTML")
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке информации о записи. Попробуйте позже.",
-            reply_markup=back_to_my_bookings_menu()
+            "❌ <b>Произошла ошибка при загрузке информации о записи</b>. Попробуйте позже.",
+            reply_markup=back_to_my_bookings_menu(),
+            parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Неизвестная ошибка: {e}")
         await callback_query.message.edit_text(
-            "Произошла ошибка при загрузке информации о записи. Попробуйте позже.",
-            reply_markup=back_to_my_bookings_menu()
+            "❌ <b>Произошла ошибка при загрузке информации о записи</b>. Попробуйте позже.",
+            reply_markup=back_to_my_bookings_menu(),
+            parse_mode="HTML"
         )
+
+
+
 
 
 @router_bookings.callback_query(lambda c: c.data.startswith("cancel_booking_"))
@@ -314,5 +343,5 @@ async def process_cancel_booking(callback_query: CallbackQuery):
 def back_to_my_bookings_menu():
     """Кнопка возврата в меню 'Мои записи'."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Назад", callback_data="my_bookings")]
+        [InlineKeyboardButton(text="⬅ Назад", callback_data="my_bookings")]
     ])

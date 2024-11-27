@@ -33,23 +33,23 @@ async def process_callback_booking(callback_query: CallbackQuery):
             masters = session.query(Master).all()
 
         if not masters:
-            await callback_query.message.edit_text("Мастера не найдены. Попробуйте позже.")
+            await callback_query.message.edit_text("⚠️ *Мастера не найдены. Попробуйте позже.*")
             return
 
         master_menu = InlineKeyboardMarkup(
             inline_keyboard=[
-                                [InlineKeyboardButton(text=master.master_name,
+                                [InlineKeyboardButton(text=f"⚜️ {master.master_name}",
                                                       callback_data=f"booking_master_{master.master_id}")]
                                 for master in masters
-                            ] + [[InlineKeyboardButton(text="Назад", callback_data="main_menu")]]
+                            ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]]
         )
 
-        await callback_query.message.edit_text("Выберите мастера для записи:", reply_markup=master_menu)
+        await callback_query.message.edit_text("👨‍🔧 *Выберите мастера для записи:*", reply_markup=master_menu)
         logger.debug("Отправлено динамическое меню с выбором мастеров.")
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при загрузке списка мастеров: {e}")
-        await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+        await callback_query.message.edit_text("❌ *Произошла ошибка. Попробуйте позже.*")
 
 
 @router_booking.callback_query(lambda c: c.data.startswith('booking_master_'))
@@ -58,7 +58,7 @@ async def process_callback_master(callback_query: CallbackQuery):
         data_parts = callback_query.data.split('_')
         if len(data_parts) != 3 or data_parts[0] != "booking" or data_parts[1] != "master":
             logger.error(f"Некорректный формат callback_data: {callback_query.data}")
-            await callback_query.answer("Некорректные данные. Попробуйте снова.", show_alert=True)
+            await callback_query.answer("❌ *Некорректные данные. Попробуйте снова.*", show_alert=True)
             return
 
         master_id = data_parts[2]
@@ -68,17 +68,17 @@ async def process_callback_master(callback_query: CallbackQuery):
         if not calendar_markup:
             logger.error(f"Не удалось сгенерировать календарь для мастера {master_id}")
             await callback_query.message.edit_text(
-                "Не удалось загрузить календарь. Попробуйте позже.",
+                "❌ *Не удалось загрузить календарь. Попробуйте позже.*",
                 reply_markup=None
             )
             return
 
-        await callback_query.message.edit_text("Выберите дату для записи:", reply_markup=calendar_markup)
+        await callback_query.message.edit_text("📅 *Выберите дату для записи:*", reply_markup=calendar_markup)
         logger.debug(f"Календарь для мастера {master_id} успешно отправлен.")
 
     except Exception as e:
         logger.error(f"Ошибка при возврате к выбору даты для мастера {callback_query.data}: {e}")
-        await callback_query.answer("Произошла ошибка при возврате к выбору даты.", show_alert=True)
+        await callback_query.answer("❌ *Произошла ошибка при возврате к выбору даты.*", show_alert=True)
 
 
 @router_booking.callback_query(lambda c: c.data.startswith('date_'))
@@ -117,7 +117,7 @@ async def process_callback_date(callback_query: CallbackQuery):
                     row.append(InlineKeyboardButton(text=f"❌ {time}", callback_data="ignore"))
                 else:
                     row.append(
-                        InlineKeyboardButton(text=time, callback_data=f"time_{master_id}_{selected_date}_{time}:00"))
+                        InlineKeyboardButton(text=f"🕒 {time}", callback_data=f"time_{master_id}_{selected_date}_{time}:00"))
 
                 if len(row) == 3:
                     time_buttons.append(row)
@@ -126,16 +126,15 @@ async def process_callback_date(callback_query: CallbackQuery):
             if row:
                 time_buttons.append(row)
 
-            time_buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"master_{master_id}")])
+            time_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"master_{master_id}")])
             await callback_query.message.edit_text(
-                "Выберите доступное время:",
+                "⏰ *Выберите доступное время:*",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=time_buttons)
             )
             logger.debug(f"Доступные временные слоты отправлены пользователю.")
     except Exception as e:
         logger.error(f"Ошибка при обработке времени: {e}")
-        await callback_query.answer("Произошла ошибка при обработке времени.", show_alert=True)
-
+        await callback_query.answer("❌ *Произошла ошибка при обработке времени.*", show_alert=True)
 
 @router_booking.callback_query(lambda c: c.data.startswith('time_'))
 async def process_callback_time(callback_query: CallbackQuery):
@@ -266,9 +265,10 @@ async def process_callback_minute(callback_query: CallbackQuery):
     )
 
 
-@router_booking.callback_query(lambda c: c.data.startswith('confirm_'))
+@router_booking.callback_query(lambda c: c.data.startswith('confirm_') and not c.data.startswith('confirm_delete_'))
 async def process_confirm_time(callback_query: CallbackQuery):
-    pattern = r'confirm_(\d+)_(\d{4}-\d{2}-\d{2})_(\d{2}:\d{2})'
+    # Новый паттерн, который также учитывает ситуацию с confirm_delete
+    pattern = r'confirm_(\d+)_([\d]{4}-[\d]{2}-[\d]{2})_([\d]{2}:[\d]{2})'
     match = re.match(pattern, callback_query.data)
 
     if not match:
@@ -276,10 +276,20 @@ async def process_confirm_time(callback_query: CallbackQuery):
         await callback_query.answer("Ошибка при обработке данных. Попробуйте снова.", show_alert=True)
         return
 
-    master_id, date, time = match.groups()
-    user_id = callback_query.from_user.id
-    booking_datetime = datetime.strptime(f"{date} {time}", '%Y-%m-%d %H:%M')
+    # Обработка данных, если данные совпали с паттерном
+    master_id = match.group(1)
+    date = match.group(2)
+    time = match.group(3)
 
+    # Преобразуем дату и время в объект datetime
+    try:
+        booking_datetime = datetime.strptime(f"{date} {time}", '%Y-%m-%d %H:%M')
+    except ValueError as e:
+        logger.error(f"Ошибка преобразования даты и времени: {date} {time} — {e}")
+        await callback_query.answer("Некорректная дата или время. Попробуйте снова.", show_alert=True)
+        return
+
+    user_id = callback_query.from_user.id
     logger.info(f"Пользователь {user_id} подтвердил запись на {date} {time}.")
 
     try:
@@ -294,7 +304,7 @@ async def process_confirm_time(callback_query: CallbackQuery):
 
             if overlapping_booking:
                 await callback_query.answer(
-                    "Выбранное время уже занято. Пожалуйста, выберите другое.",
+                    "⛔ Выбранное время уже занято. Пожалуйста, выберите другое.",
                     show_alert=True
                 )
                 return
@@ -307,7 +317,7 @@ async def process_confirm_time(callback_query: CallbackQuery):
                 user_id=user_id
             )
             if not new_booking:
-                await callback_query.answer("Произошла ошибка при записи.", show_alert=True)
+                await callback_query.answer("❌ Произошла ошибка при записи.", show_alert=True)
                 return
 
             booking_id = new_booking.booking_id
@@ -318,8 +328,10 @@ async def process_confirm_time(callback_query: CallbackQuery):
                 if master:
                     await callback_query.bot.send_message(
                         master.master_id,
-                        f"*У вас новая запись!*\n\n*Пользователь:* {callback_query.from_user.full_name}\n"
-                        f"*Дата:* {date}\n*Время:* {time}",
+                        f"📅 *У вас новая запись!*\n\n"
+                        f"👤 *Пользователь:* {callback_query.from_user.full_name}\n"
+                        f"📅 *Дата:* {date}\n"
+                        f"⏰ *Время:* {time}",
                         parse_mode="Markdown"
                     )
                     logger.info(f"Уведомление отправлено мастеру {master_name} ({master.master_id}).")
@@ -328,19 +340,29 @@ async def process_confirm_time(callback_query: CallbackQuery):
 
             await schedule_booking_reminder(booking_datetime, callback_query.bot, user_id, master_name)
             blocked_times.setdefault((master_id, date), set()).add(time)
+
+            # Текст для пользователя
             await callback_query.message.edit_text(
-                f"Запись подтверждена!\n\nДата: {date}\nВремя: {time}",
+                f"✅ *Запись подтверждена!*\n\n"
+                f"📅 *Дата:* {date}\n"
+                f"⏰ *Время:* {time}",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [InlineKeyboardButton(text="Главное меню", callback_data="main_menu")],
-                        [InlineKeyboardButton(text="Написать мастеру", callback_data=f"write_to_master_{master_id}")]
+                        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")],
+                        [InlineKeyboardButton(text="💬 Написать мастеру", callback_data=f"write_to_master_{master_id}")]
                     ]
                 )
             )
 
     except Exception as e:
         logger.error(f"Ошибка при подтверждении записи для пользователя {user_id}: {e}")
-        await callback_query.answer("Произошла ошибка при записи. Попробуйте позже.", show_alert=True)
+        await callback_query.answer("❌ Произошла ошибка при записи. Попробуйте позже.", show_alert=True)
+
+
+async def handle_delete_booking(callback_query, master_id):
+    # Логика для удаления бронирования или подтверждения удаления
+    logger.info(f"Пользователь запросил удаление записи для мастера {master_id}.")
+    await callback_query.answer("Запрос на удаление обработки...")  # Дополнительно - подробности
 
 
 @router_booking.callback_query(lambda c: c.data == 'cancel_booking')
@@ -426,7 +448,7 @@ async def cancel_booking(callback_query: CallbackQuery):
 
         if not match:
             logger.error(f"Некорректные данные callback: {callback_query.data}")
-            await callback_query.answer("Ошибка обработки данных. Попробуйте снова.", show_alert=True)
+            await callback_query.answer("❌ Ошибка обработки данных. Попробуйте снова.", show_alert=True)
             return
 
         booking_id = int(match.group(1))
@@ -436,20 +458,21 @@ async def cancel_booking(callback_query: CallbackQuery):
             booking = session.query(Booking).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
-                await callback_query.answer("Запись не найдена.", show_alert=True)
+                await callback_query.answer("⚠️ Запись не найдена.", show_alert=True)
                 return
 
             if booking.status == "cancelled":
-                await callback_query.answer("Запись уже отменена.", show_alert=True)
+                await callback_query.answer("⚠️ Запись уже отменена.", show_alert=True)
                 return
 
             booking.status = "cancelled"
             session.commit()
 
+            # Сообщение пользователю о том, что запись отменена
             await callback_query.message.edit_text(
-                "Ваша запись была успешно отменена.",
+                "✅ Ваша запись была успешно отменена.",
                 reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]]
+                    inline_keyboard=[[InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]]
                 )
             )
 
@@ -457,22 +480,23 @@ async def cancel_booking(callback_query: CallbackQuery):
             if master:
                 await callback_query.bot.send_message(
                     master.master_id,
-                    f"Запись пользователя {callback_query.from_user.full_name} на {booking.booking_datetime} отменена."
+                    f"📅 Запись пользователя {callback_query.from_user.full_name} на {booking.booking_datetime} отменена."
                 )
                 logger.info(f"Уведомление отправлено мастеру {master.master_id}.")
     except SQLAlchemyError as e:
         logger.error(f"Ошибка базы данных при отмене записи: {e}")
-        await callback_query.answer("Ошибка при отмене записи. Попробуйте позже.", show_alert=True)
+        await callback_query.answer("❌ Ошибка при отмене записи. Попробуйте позже.", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка при отмене записи: {e}")
-        await callback_query.answer("Произошла ошибка. Попробуйте снова.", show_alert=True)
+        await callback_query.answer("⚠️ Произошла ошибка. Попробуйте снова.", show_alert=True)
 
 
 async def send_booking_reminder(bot: Bot, user_id: int, master_name: str, booking_time: datetime):
     try:
         reminder_text = (
-            f"Напоминание: У вас запись к мастеру {master_name} "
-            f"на {booking_time.strftime('%d.%m.%Y %H:%M')}. Не забудьте прийти вовремя!"
+            f"⏰ Напоминание: У вас запись к мастеру {master_name} "
+            f"на {booking_time.strftime('%d.%m.%Y %H:%M')}. Не забудьте прийти вовремя! "
+            "🙏 Будем рады вас увидеть!"
         )
         await bot.send_message(user_id, reminder_text)
     except Exception as e:
@@ -514,10 +538,10 @@ async def process_callback_date(callback_query: CallbackQuery):
 
             time_buttons = []
             for time in available_times:
-                time_buttons.append([InlineKeyboardButton(text=time, callback_data=f"time_{master_id}_{date}_{time}")])
+                time_buttons.append([InlineKeyboardButton(text=f"⏰ {time}", callback_data=f"time_{master_id}_{date}_{time}")])
 
             markup = InlineKeyboardMarkup(inline_keyboard=time_buttons)
-            await callback_query.message.edit_text("Выберите доступное время:", reply_markup=markup)
+            await callback_query.message.edit_text("🕒 Выберите доступное время для записи:", reply_markup=markup)
     except Exception as e:
         logger.error(f"Ошибка при обработке времени: {e}")
-        await callback_query.answer("Произошла ошибка при обработке времени.", show_alert=True)
+        await callback_query.answer("❌ Произошла ошибка при обработке времени.", show_alert=True)

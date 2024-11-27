@@ -12,7 +12,7 @@ router_start = Router(name="start")
 
 # Кнопка "Начать" для клавиатуры
 start_keyboard = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="Главное меню")]],
+    keyboard=[[KeyboardButton(text="🏚️ Главное меню")]],
     resize_keyboard=True
 )
 
@@ -40,7 +40,7 @@ async def cmd_start(message: types.Message):
         await message.answer("Произошла ошибка, попробуйте позже.")
 
 # Обработчик нажатия кнопки "Начать"
-@router_start.message(lambda message: message.text == "Главное меню")
+@router_start.message(lambda message: message.text == "🏚️ Главное меню")
 async def start_button_pressed(message: types.Message):
     user_id = message.from_user.id
     username = message.from_user.username
