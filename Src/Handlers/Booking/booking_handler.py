@@ -367,9 +367,10 @@ async def handle_delete_booking(callback_query, master_id):
 
 @router_booking.callback_query(lambda c: c.data == 'cancel_booking')
 async def process_cancel_booking(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id  # Получаем ID пользователя из callback_query
     await callback_query.message.edit_text(
-        "Запись отменена. Вы возвращены в главное меню.",
-        reply_markup=main_menu()
+        "❌ Создание записи отменено. Вы возвращены в главное меню.",
+        reply_markup=await main_menu(user_id)  # Передаем user_id в main_menu
     )
 
 
