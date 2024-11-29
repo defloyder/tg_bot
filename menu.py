@@ -21,7 +21,7 @@ async def main_menu(user_id):
         # Кнопки для обычных пользователей
         buttons = [
             [
-                InlineKeyboardButton(text="ℹ️ Узнать о мастерах", callback_data="masters"),
+                InlineKeyboardButton(text="ℹ️ О мастерах", callback_data="masters"),
                 InlineKeyboardButton(text="💰 Прайс-лист", callback_data="get_price_list")
             ],
             [InlineKeyboardButton(text="📅 Записаться на приём", callback_data="booking")],

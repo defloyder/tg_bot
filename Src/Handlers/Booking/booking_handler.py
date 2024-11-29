@@ -440,7 +440,6 @@ async def process_edit_booking(callback_query: CallbackQuery):
         await callback_query.message.edit_text("Произошла ошибка при редактировании записи. Попробуйте позже.",
                                                reply_markup=back_to_my_bookings_menu())
 
-
 @router_booking.callback_query(lambda c: c.data.startswith('cancel_booking_'))
 async def cancel_booking(callback_query: CallbackQuery):
     try:
@@ -456,18 +455,24 @@ async def cancel_booking(callback_query: CallbackQuery):
         user_id = callback_query.from_user.id
 
         with SessionFactory() as session:
+            # Получаем запись по ID
             booking = session.query(Booking).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
+                logger.warning(f"Попытка отменить несуществующую запись: ID {booking_id}")
                 await callback_query.answer("⚠️ Запись не найдена.", show_alert=True)
                 return
 
             if booking.status == "cancelled":
+                logger.info(f"Запись ID {booking_id} уже отменена.")
                 await callback_query.answer("⚠️ Запись уже отменена.", show_alert=True)
                 return
 
+            # Обновляем статус записи
             booking.status = "cancelled"
             session.commit()
+
+            logger.info(f"Запись ID {booking_id} успешно отменена пользователем ID {user_id}.")
 
             # Сообщение пользователю о том, что запись отменена
             await callback_query.message.edit_text(
@@ -477,13 +482,30 @@ async def cancel_booking(callback_query: CallbackQuery):
                 )
             )
 
+            # Уведомление мастеру
             master = session.query(Master).filter(Master.master_id == booking.master_id).first()
             if master:
-                await callback_query.bot.send_message(
-                    master.master_id,
-                    f"📅 Запись пользователя {callback_query.from_user.full_name} на {booking.booking_datetime} отменена."
-                )
-                logger.info(f"Уведомление отправлено мастеру {master.master_id}.")
+                try:
+                    await callback_query.bot.send_message(
+                        master.master_id,
+                        f"📅 Запись пользователя {callback_query.from_user.full_name} "
+                        f"на {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена.",
+                    )
+                    logger.info(f"Уведомление отправлено мастеру ID {master.master_id}.")
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке уведомления мастеру {master.master_id}: {e}")
+
+            # Уведомление пользователю (владельцу записи)
+            if booking.user_id:
+                try:
+                    await callback_query.bot.send_message(
+                        booking.user_id,
+                        f"🔔 Ваша запись на {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена.",
+                    )
+                    logger.info(f"Уведомление отправлено пользователю ID {booking.user_id}.")
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке уведомления пользователю ID {booking.user_id}: {e}")
+
     except SQLAlchemyError as e:
         logger.error(f"Ошибка базы данных при отмене записи: {e}")
         await callback_query.answer("❌ Ошибка при отмене записи. Попробуйте позже.", show_alert=True)
@@ -505,12 +527,21 @@ async def send_booking_reminder(bot: Bot, user_id: int, master_name: str, bookin
 
 
 async def schedule_booking_reminder(booking_datetime, bot, user_id, master_name):
+    # Рассчитать время напоминания
     reminder_time = booking_datetime - timedelta(days=1)
     reminder_time = reminder_time.replace(hour=8, minute=0, second=0, microsecond=0)
 
+    # Если время напоминания уже прошло
     if reminder_time < datetime.now():
-        reminder_time = datetime.now() + timedelta(seconds=5)
+        logger.info(
+            f"Время напоминания уже прошло ({reminder_time}). "
+            f"Отправляем напоминание сразу пользователю {user_id}."
+        )
+        # Отправить напоминание немедленно
+        await send_booking_reminder(bot, user_id, master_name, booking_datetime)
+        return
 
+    # Если время напоминания еще не наступило, запланировать его
     job = scheduler.add_job(
         send_booking_reminder,
         'date',

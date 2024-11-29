@@ -170,7 +170,6 @@ async def edit_master(callback_query: CallbackQuery):
             keyboard = InlineKeyboardMarkup(row_width=2, inline_keyboard=[])
 
             for master in masters:
-                # Проверяем, что master_name не None и не пустое
                 master_name = master.master_name if master.master_name else "Без имени"
                 keyboard.inline_keyboard.append(
                     [InlineKeyboardButton(text=master_name, callback_data=f"edit_{master.master_id}")])
@@ -220,8 +219,7 @@ async def process_name_edit(message: Message, state: FSMContext):
 
     new_name = message.text.strip()
     if new_name.lower() == "пропустить":
-        new_name = None  # Оставим старое имя, если не меняем
-
+        new_name = None
     data = await state.get_data()
     master_id = data["master_id"]
     with SessionFactory() as session:
@@ -243,8 +241,7 @@ async def process_description_edit(message: Message, state: FSMContext):
 
     new_description = message.text.strip()
     if new_description.lower() == "пропустить":
-        new_description = None  # Оставим старое описание, если не меняем
-
+        new_description = None
     data = await state.get_data()
     master_id = data["master_id"]
     with SessionFactory() as session:

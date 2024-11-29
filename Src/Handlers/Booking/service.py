@@ -9,17 +9,19 @@ from database.models import MasterSchedule, Booking, UserSchedule
 from logger_config import logger
 
 
-async def generate_calendar(master_id: str):
+async def generate_calendar(master_id: str, year: int = None, month: int = None):
     """
-    Генерация календаря для мастера с отображением занятых и заблокированных дней.
+    Генерация календаря для мастера с возможностью перелистывания вперед.
     """
     now = datetime.now()
-    now_date = now.date()
-    month_str = now.strftime("%B %Y")
-    current_month = now.month
+    current_date = now.date()
+    if not year or not month:
+        year, month = now.year, now.month
+
+    month_name = datetime(year, month, 1).strftime("%B %Y")
 
     calendar_buttons = InlineKeyboardBuilder()
-    calendar_buttons.add(InlineKeyboardButton(text=month_str, callback_data="ignore"))
+    calendar_buttons.add(InlineKeyboardButton(text=month_name, callback_data="ignore"))
 
     week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     calendar_buttons.row(*[InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
@@ -44,21 +46,21 @@ async def generate_calendar(master_id: str):
         logger.error(f"Ошибка при запросе блокированных дней для мастера {master_id}: {e}")
         blocked_dates = set()
 
-    days_in_month = calendar.monthrange(now.year, current_month)[1]
+    days_in_month = calendar.monthrange(year, month)[1]
 
     week = []
-    day_of_week = datetime(now.year, current_month, 1).weekday()  # День недели для первого числа месяца
+    first_day_weekday = datetime(year, month, 1).weekday()  # День недели для первого числа месяца
 
-    for _ in range(day_of_week):
+    for _ in range(first_day_weekday):
         week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
 
     for day in range(1, days_in_month + 1):
         try:
-            date = datetime(now.year, current_month, day)
+            date = datetime(year, month, day)
             date_str = date.strftime("%d")
             callback_data = f'date_{master_id}_{date.strftime("%Y-%m-%d")}'
 
-            if date.date() <= now_date or date.date() in blocked_dates:
+            if date.date() <= current_date or date.date() in blocked_dates:
                 week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
             else:
                 week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
@@ -74,41 +76,27 @@ async def generate_calendar(master_id: str):
     if week:
         calendar_buttons.row(*week)
 
+    # Добавляем кнопки управления
+    navigation_buttons = []
+
+    if month == now.month and year == now.year:
+        # Текущий месяц, можно перейти только на следующий
+        next_month = (month % 12) + 1
+        next_year = year + 1 if next_month == 1 else year
+        navigation_buttons.append(InlineKeyboardButton(
+            text="➡️ Следующий месяц",
+            callback_data=f"calendar_{master_id}_{next_year}_{next_month}"
+        ))
+
+    elif month == now.month + 1 or (now.month == 12 and month == 1 and year == now.year + 1):
+        # Следующий месяц, кнопка назад не добавляется
+        navigation_buttons.append(InlineKeyboardButton(
+            text="⬅️ Текущий месяц",
+            callback_data=f"calendar_{master_id}_{now.year}_{now.month}"
+        ))
+
+    if navigation_buttons:
+        calendar_buttons.row(*navigation_buttons)
+
     calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking"))
     return calendar_buttons.as_markup()
-
-
-async def get_booked_times_for_master(session, master_id):
-    """
-    Получение занятых временных интервалов для мастера.
-    """
-    blocked_times = {}
-
-    try:
-        bookings = session.query(Booking).filter(
-            Booking.master_id == master_id,
-            Booking.status == "new"
-        ).all()
-
-        for booking in bookings:
-            start_time = booking.booking_datetime
-            end_time = start_time + timedelta(hours=4)
-            current_time = start_time
-
-            while current_time < end_time:
-                date_key = current_time.date()
-                if date_key not in blocked_times:
-                    blocked_times[date_key] = set()
-                blocked_times[date_key].add(current_time.strftime("%H:%M"))
-                current_time += timedelta(minutes=15)
-
-        today_str = datetime.now().date().strftime("%Y-%m-%d")
-        if today_str not in blocked_times:
-            blocked_times[today_str] = set()
-
-    except Exception as e:
-        logger.error(f"Ошибка при запросе занятых временных интервалов для мастера {master_id}: {e}")
-        return {}
-
-    logger.debug(f"Занятые временные интервалы для мастера {master_id}: {blocked_times}")
-    return blocked_times

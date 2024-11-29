@@ -256,9 +256,6 @@ async def process_view_active_booking(callback_query: CallbackQuery):
         )
 
 
-
-
-
 @router_bookings.callback_query(lambda c: c.data.startswith("cancel_booking_"))
 async def process_cancel_booking(callback_query: CallbackQuery):
     booking_id = int(callback_query.data.split("_")[-1])
@@ -285,44 +282,16 @@ async def process_cancel_booking(callback_query: CallbackQuery):
 
             logger.debug(f"Запись ID {booking.booking_id} успешно отменена.")
 
-            master_id = booking.master_id
-            booking_date = booking.booking_datetime.date()
-
-            start_time = 10
-            end_time = 22
-            time_slots = [f"{hour:02}:00" for hour in range(start_time, end_time + 1)]
-
-            active_bookings = session.query(Booking).filter(
-                Booking.master_id == master_id,
-                func.date(Booking.booking_datetime) == booking_date,
-                Booking.status != "cancelled"
-            ).all()
-
-            blocked_times = set()
-            for active_booking in active_bookings:
-                booked_hour_int = active_booking.booking_datetime.hour
-                for i in range(0, 3):
-                    blocked_hour = booked_hour_int + i
-                    if start_time <= blocked_hour <= end_time:
-                        blocked_times.add(f"{blocked_hour:02}:00")
-
-            time_buttons = []
-            for time in time_slots:
-                if time in blocked_times:
-                    time_buttons.append([InlineKeyboardButton(text=f"❌ {time}", callback_data="ignore")])
-                else:
-                    time_buttons.append(
-                        [InlineKeyboardButton(text=time,
-                                              callback_data=f"time_{master_id}_{booking_date.strftime('%d.%m.%Y')}_{time}:00")]
+            # Уведомление пользователя
+            if booking.user_id:
+                try:
+                    await callback_query.bot.send_message(
+                        booking.user_id,
+                        f"🔔 Ваша запись на {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена мастером.",
                     )
-
-            time_buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"master_{master_id}")])
-
-            await callback_query.message.edit_text(
-                "Обновленный список доступного времени:",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=time_buttons)
-            )
-            logger.debug("Временные слоты успешно освобождены и обновлены.")
+                    logger.info(f"✅ Уведомление отправлено пользователю {booking.user_id}.")
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке уведомления пользователю {booking.user_id}: {e}")
 
             await callback_query.answer("Запись успешно отменена.", show_alert=True)
 

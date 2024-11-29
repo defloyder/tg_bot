@@ -47,10 +47,11 @@ async def manage_schedule(c: CallbackQuery):
 
 
 async def generate_schedule_calendar(master_id, month_offset=0):
-    """Генерация календаря для управления расписанием с учётом текущего месяца и смещения."""
+    """Генерация календаря для управления расписанием."""
     now = datetime.now() + relativedelta(months=month_offset)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     start_of_month = dt_date(now.year, now.month, 1)
+    first_weekday = start_of_month.weekday()  # Начало месяца (0 = понедельник, 6 = воскресенье)
 
     month_name = now.strftime('%B %Y')
     calendar_buttons = [[InlineKeyboardButton(text=month_name, callback_data="ignore")]]  # Заголовок месяца
@@ -60,6 +61,11 @@ async def generate_schedule_calendar(master_id, month_offset=0):
 
     week = []
 
+    # Добавление пустых кнопок в начале недели
+    for _ in range(first_weekday):
+        week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
+
+    # Получение информации о блокировке дат
     with SessionFactory() as session:
         try:
             blocked_dates_master = set(
@@ -105,7 +111,7 @@ async def generate_schedule_calendar(master_id, month_offset=0):
             else:
                 week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data=f"toggle_block_{current_date}"))
         elif current_date < datetime.now().date():
-            week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data=f"toggle_block_{current_date}"))
+            week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data="ignore"))
         else:
             week.append(InlineKeyboardButton(text=day_str, callback_data=f"toggle_block_{current_date}"))
 
@@ -116,6 +122,7 @@ async def generate_schedule_calendar(master_id, month_offset=0):
     if week:
         calendar_buttons.append(week)
 
+    # Добавление кнопок для переключения месяца
     calendar_buttons.append([
         InlineKeyboardButton(text="⬅️", callback_data=f"prev_month_{month_offset - 1}"),
         InlineKeyboardButton(text="➡️", callback_data=f"next_month_{month_offset + 1}")

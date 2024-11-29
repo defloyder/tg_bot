@@ -17,9 +17,10 @@ from openpyxl.styles import Alignment
 from sqlalchemy import Date
 from sqlalchemy.exc import SQLAlchemyError
 
+from Src.Handlers.Booking.service import generate_calendar
 from database import Booking, Master
 from database.database import SessionFactory
-from database.models import PriceList
+from database.models import PriceList, User
 from logger_config import logger
 from menu import admin_panel, main_menu
 
@@ -115,7 +116,7 @@ async def process_all_booking_history(callback_query: CallbackQuery):
             for booking in sorted_bookings:
                 status = (
                     "❌ Отменена" if booking.status == "cancelled" else
-                    "🟠   Прошедшая" if booking.booking_datetime < datetime.now() else
+                    "🟠 Прошедшая" if booking.booking_datetime < datetime.now() else
                     "🟢 Активная"
                 )
 
@@ -274,6 +275,7 @@ async def view_booking_details(callback_query: CallbackQuery):
                 )
                 return
 
+            # Определяем статус записи
             status = (
                 "⛔ Отменена" if booking.status == "cancelled" else
                 "🟠 Прошедшая" if booking.booking_datetime < datetime.now() else
@@ -281,24 +283,35 @@ async def view_booking_details(callback_query: CallbackQuery):
             )
 
             details = (
-                f"**🆔 ID записи:** {booking.booking_id}\n"
-                f"**📅 Дата и время:** {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')}\n"
-                f"**⚜️ Мастер:** {booking.master_name}\n"
+                f"🆔 ID записи: {booking.booking_id}\n"
+                f"📅 Дата и время: {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')}\n"
+                f"⚜️ Мастер: {booking.master_name}\n"
             )
 
-            try:
-                user_display_name = callback_query.from_user.full_name
-            except AttributeError:
-                user_display_name = booking.user.username if booking.user and booking.user.username else "Неизвестный пользователь"
+            # Получаем имя пользователя, связанного с записью
+            if booking.user_id:
+                user = session.query(User).filter(User.user_id == booking.user_id).first()
+                if user:
+                    if user.username:  # Если есть username
+                        user_display_name = f"@{user.username}"
+                    elif user.full_name:  # Если есть полное имя
+                        user_display_name = user.full_name
+                    else:  # Если ни username, ни имени нет
+                        user_display_name = "Неизвестный пользователь"
+                else:
+                    user_display_name = "Неизвестный пользователь"
+            else:
+                user_display_name = "Неизвестный пользователь"
 
             details += (
-                f"**👤 Пользователь:** [{user_display_name}]\n"
-                f"**💬 ID клиента:** <a href='tg://user?id={booking.user_id}'> {booking.user_id}</a>\n"
-                f"**🔖 Статус:** {status}\n"
+                f"👤 Пользователь: {user_display_name}\n"
+                f"💬 ID клиента: <a href='tg://user?id={booking.user_id}'>{booking.user_id}</a>\n"
+                f"🔖 Статус: {status}\n"
             )
 
             logger.info(f"Детали записи: {details}")
 
+            # Определяем, какие кнопки показывать в зависимости от статуса
             buttons = []
             if status == "🟢 Активная" and booking.booking_datetime > datetime.now():
                 cancel_button = InlineKeyboardButton(
@@ -324,7 +337,6 @@ async def view_booking_details(callback_query: CallbackQuery):
             reply_markup=admin_panel()
         )
 
-
 @router_admin.callback_query(lambda c: c.data.startswith("cancel_booking_"))
 async def cancel_booking(callback_query: CallbackQuery):
     booking_id = int(callback_query.data.split("_")[-1])
@@ -337,55 +349,34 @@ async def cancel_booking(callback_query: CallbackQuery):
                 Booking.user_id,
                 Master.master_name,
                 Booking.status,
-                Booking.master_id
-            ).join(Master).filter(Booking.booking_id == booking_id).first()
+            ).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
                 await callback_query.answer("❌ Запись с таким ID не найдена.", show_alert=True)
-                logger.error(f"Запись с ID {booking_id} не найдена для отмены.")
                 return
 
             if booking.status == "cancelled":
                 await callback_query.answer("⚠️ Запись уже отменена.", show_alert=True)
                 return
 
+            # Обновляем статус записи
             session.execute(
                 Booking.__table__.update().where(Booking.booking_id == booking_id).values(status="cancelled")
             )
             session.commit()
 
-            master_name = booking.master_name
-            booking_datetime = booking.booking_datetime
+            logger.info(f"Запись с ID {booking_id} была отменена администратором.")
 
-            logger.info(f"Запись с ID {booking_id} была отменена.")
-
-            master_id = booking.master_id
-            booking_date = booking_datetime.date()
-
-            booked_slots = session.query(Booking).filter(
-                Booking.master_id == master_id,
-                Booking.booking_datetime.cast(Date) == booking_date,
-                Booking.status != "cancelled"
-            ).all()
-
-            is_slot_freed = all(booking.booking_datetime != booking_datetime for booking in booked_slots)
-
-            if is_slot_freed:
-                logger.debug(
-                    f"⏰ Время {booking_datetime.time()} на {booking_date} для мастера {master_id} теперь свободно.")
-
-            try:
-                if booking.user_id:
+            # Отправка уведомления пользователю
+            if booking.user_id:
+                try:
                     await callback_query.bot.send_message(
                         booking.user_id,
-                        f"🔔 Ваша запись к мастеру {master_name} на {booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена админом.",
-                        reply_markup=None
+                        f"🔔 Ваша запись к мастеру {booking.master_name} на {booking.booking_datetime.strftime('%d.%m.%Y %H:%M')} была отменена администратором.",
                     )
                     logger.info(f"✅ Уведомление отправлено пользователю {booking.user_id}.")
-                else:
-                    logger.warning(f"⚠️ Не удалось отправить уведомление. Пользователь с ID {booking.user_id} не найден.")
-            except Exception as e:
-                logger.error(f"Ошибка при отправке уведомления пользователю {booking.user_id}: {e}")
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке уведомления пользователю {booking.user_id}: {e}")
 
             await callback_query.answer("✅ Запись успешно отменена.")
             await callback_query.message.edit_text(
@@ -395,12 +386,6 @@ async def cancel_booking(callback_query: CallbackQuery):
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка SQLAlchemy при отмене записи {booking_id}: {e}")
-        await callback_query.message.edit_text(
-            "⚠️ Произошла ошибка при отмене записи. Попробуйте позже.",
-            reply_markup=admin_panel()
-        )
-    except Exception as e:
-        logger.error(f"Неизвестная ошибка при отмене записи {booking_id}: {e}")
         await callback_query.message.edit_text(
             "⚠️ Произошла ошибка при отмене записи. Попробуйте позже.",
             reply_markup=admin_panel()
@@ -542,3 +527,20 @@ async def callback_get_price_list(callback_query: CallbackQuery, state: FSMConte
     current_state = await state.get_state()
     logger.debug(f"Current FSM state: {current_state}")
     await show_price_list(callback_query.message)
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("calendar_"))
+async def handle_calendar_navigation(callback_query: CallbackQuery):
+    """
+    Обработчик навигации по календарю.
+    """
+    try:
+        _, master_id, year, month = callback_query.data.split("_")
+        year, month = int(year), int(month)
+
+        markup = await generate_calendar(master_id, year, month)
+        await callback_query.message.edit_reply_markup(reply_markup=markup)
+
+    except Exception as e:
+        logger.error(f"Ошибка обработки навигации по календарю: {e}")
+        await callback_query.answer("Ошибка при обновлении календаря.", show_alert=True)
