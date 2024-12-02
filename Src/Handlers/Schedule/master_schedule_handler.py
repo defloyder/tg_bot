@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from database.database import SessionFactory
-from database.models import MasterSchedule, UserSchedule, Booking
+from database.models import MasterSchedule, UserSchedule, Booking, Master
 from logger_config import logger
 
 
@@ -175,6 +175,15 @@ async def toggle_block_date(c: CallbackQuery):
     time_slots = [f"{hour:02}:00" for hour in range(start_time, end_time + 1)]
 
     try:
+        # Проверяем, является ли пользователь мастером
+        with SessionFactory() as session:
+            is_master = session.query(Master).filter(Master.master_id == master_id).first()
+
+        if not is_master:
+            # Если пользователь не мастер, отправляем сообщение об ошибке
+            await c.message.edit_text("Вы не обладаете правами для управления расписанием.")
+            return
+
         # Логирование информации о дате и пользователе
         logger.info(f"Загружаем заблокированные слоты для мастера {master_id} на {selected_date}.")
 
@@ -214,11 +223,12 @@ async def toggle_block_date(c: CallbackQuery):
                 UserSchedule.date == selected_date
             ).first()
 
+        # Добавляем кнопки "Открыть день" или "Закрыть день" только для мастера
         if user_schedule_entry and user_schedule_entry.is_blocked:
             # Если день заблокирован, меняем текст кнопки на "Открыть день"
             time_buttons.append(InlineKeyboardButton(text="Открыть день", callback_data=f"open_day_{selected_date}"))
         else:
-            # Если день не заблокирован, оставляем кнопку "Закрыть день"
+            # Если день не заблокирован, добавляем кнопку "Закрыть день"
             time_buttons.append(InlineKeyboardButton(text="Закрыть день", callback_data=f"close_day_{selected_date}"))
 
         # Формируем разметку для клавиатуры
@@ -231,8 +241,7 @@ async def toggle_block_date(c: CallbackQuery):
         logger.debug(f"Отправляем клавиатуру с {len(time_buttons)} кнопками.")
 
         # Отправляем сообщение с клавиатурой
-        await c.message.edit_text(f"Выберите время для {selected_date.strftime('%d.%m.%Y')}:",
-                                  reply_markup=markup)
+        await c.message.edit_text(f"Выберите время для {selected_date.strftime('%d.%m.%Y')}:", reply_markup=markup)
 
     except Exception as e:
         logger.error(f"Ошибка обработки временных слотов для {selected_date}: {e}")
