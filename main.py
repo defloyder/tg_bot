@@ -23,7 +23,6 @@ async def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
-    # Запуск процесса поллинга новых апдейтов
     await dp.start_polling(bot)
 
 if __name__ == '__main__':

@@ -7,8 +7,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.database import SessionFactory
 from database.models import MasterSchedule, Booking, UserSchedule
 from logger_config import logger
-
-
 async def generate_calendar(master_id: str, year: int = None, month: int = None):
     """
     Генерация календаря для мастера с возможностью перелистывания вперед.
@@ -28,19 +26,13 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
 
     try:
         with SessionFactory() as session:
-            blocked_days_master = set(
-                schedule.day_of_week for schedule in session.query(MasterSchedule).filter(
-                    MasterSchedule.master_id == master_id,
-                    MasterSchedule.is_blocked == True
-                ).all()
-            )
-            blocked_days_user = set(
+            # Собираем блокированные дни для мастера
+            blocked_dates = set(
                 schedule.date for schedule in session.query(UserSchedule).filter(
                     UserSchedule.user_id == master_id,
                     UserSchedule.is_blocked == True
                 ).all()
             )
-            blocked_dates = blocked_days_master | blocked_days_user
 
     except Exception as e:
         logger.error(f"Ошибка при запросе блокированных дней для мастера {master_id}: {e}")
@@ -54,17 +46,20 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
     for _ in range(first_day_weekday):
         week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
 
+    # Создаем календарь для каждого дня месяца
     for day in range(1, days_in_month + 1):
         try:
             date = datetime(year, month, day)
             date_str = date.strftime("%d")
             callback_data = f'date_{master_id}_{date.strftime("%Y-%m-%d")}'
 
+            # Проверка, заблокирован ли день для этого дня
             if date.date() <= current_date or date.date() in blocked_dates:
                 week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
             else:
                 week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
 
+            # Если в ряду 7 кнопок, добавляем их в календарь
             if len(week) == 7:
                 calendar_buttons.row(*week)
                 week = []
@@ -73,14 +68,13 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
             logger.warning(f"Ошибка при обработке дня {day}. Возможно, этого дня нет в месяце.")
             break
 
+    # Добавляем оставшиеся дни в календарь
     if week:
         calendar_buttons.row(*week)
 
-    # Добавляем кнопки управления
+    # Кнопки для перехода между месяцами
     navigation_buttons = []
-
     if month == now.month and year == now.year:
-        # Текущий месяц, можно перейти только на следующий
         next_month = (month % 12) + 1
         next_year = year + 1 if next_month == 1 else year
         navigation_buttons.append(InlineKeyboardButton(
@@ -89,7 +83,6 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
         ))
 
     elif month == now.month + 1 or (now.month == 12 and month == 1 and year == now.year + 1):
-        # Следующий месяц, кнопка назад не добавляется
         navigation_buttons.append(InlineKeyboardButton(
             text="⬅️ Текущий месяц",
             callback_data=f"calendar_{master_id}_{now.year}_{now.month}"

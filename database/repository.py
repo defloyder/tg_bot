@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
-# Создание пользователя
 def create_user(session, event: types.Message):
     user_id = event.from_user.id
     username = event.from_user.username
@@ -33,11 +32,9 @@ def create_user(session, event: types.Message):
         session.rollback()
         logger.error(f"Error creating user {user_id}: {e}")
 
-# Получение пользователя по ID
 def get_user_by_id(session, user_id):
     return session.query(User).filter(User.user_id == user_id).first()
 
-# Обновление имени пользователя
 def update_user_username(session, user_id, new_nickname):
     user = session.query(User).filter(User.user_id == user_id).first()
     if user:
@@ -47,10 +44,9 @@ def update_user_username(session, user_id, new_nickname):
 
 
 
-# Создание мастера
 def create_master(session, master_name, master_description=None, master_photo=None):
     new_master = Master(
-        master_id=str(uuid.uuid4()),  # Генерация уникального идентификатора
+        master_id=str(uuid.uuid4()),
         master_name=master_name,
         master_description=master_description,
         master_photo=master_photo
@@ -63,7 +59,6 @@ def get_master_by_id(session, master_id: str):
     return session.query(Master).filter(Master.master_id == master_id).first()
 
 
-# Удаление мастера
 def delete_master(session, master_id: str):
     master = session.query(Master).filter(Master.master_id == master_id).first()
     if master:
@@ -73,7 +68,6 @@ def delete_master(session, master_id: str):
     return False
 
 
-# Обновление данных мастера
 def update_master(session, master_id, master_name=None, master_description=None, master_photo=None):
     master = session.query(Master).filter(Master.master_id == master_id).first()
     if master:
@@ -86,7 +80,6 @@ def update_master(session, master_id, master_name=None, master_description=None,
         session.commit()
     return master
 
-# Создание записи
 def create_booking(session, booking_datetime, master_id: str, user_id: int, status="new"):
     try:
         new_booking = Booking(
@@ -100,11 +93,10 @@ def create_booking(session, booking_datetime, master_id: str, user_id: int, stat
         return new_booking
     except Exception as e:
         logger.error(f"Ошибка при создании записи: {e}")
-        session.rollback()  # Откатываем изменения в случае ошибки
+        session.rollback()
         return None
 
 
-# Получение записи по ID
 def get_record_by_id(session: Session, record_id: int):
     try:
         return session.query(Booking).filter(Booking.id == record_id).first()
@@ -112,7 +104,6 @@ def get_record_by_id(session: Session, record_id: int):
         logger.error(f"Ошибка при получении записи с ID {record_id}: {e}")
         return None
 
-# Получение занятых дат для мастера
 def get_booked_dates_for_master(session, master_id: str):
     try:
         booked_dates = session.query(Booking.booking_datetime).filter(Booking.master_id == master_id).all()

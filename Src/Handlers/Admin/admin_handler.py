@@ -367,7 +367,6 @@ async def cancel_booking(callback_query: CallbackQuery):
 
             logger.info(f"Запись с ID {booking_id} была отменена администратором.")
 
-            # Отправка уведомления пользователю
             if booking.user_id:
                 try:
                     await callback_query.bot.send_message(
@@ -456,7 +455,6 @@ async def process_price_list_photo(message: Message, state: FSMContext):
         await state.clear()
 
 
-# Улучшенный обработчик для получения прайс-листа
 @router_admin.callback_query(lambda c: c.data == "get_price_list")
 async def show_price_list(callback_query: CallbackQuery, state: FSMContext):
     global price_message_id

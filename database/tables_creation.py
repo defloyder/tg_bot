@@ -1,6 +1,5 @@
-# database/tables_creation.py
 
-from logger_config import logger  # Импортируем настроенный логгер
+from logger_config import logger
 from database.database import Base, engine
 
 def create_tables():

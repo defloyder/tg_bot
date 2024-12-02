@@ -11,7 +11,7 @@ from Src.Handlers.Booking.service import generate_calendar
 from Src.Handlers.MyBookings.my_bookings_handler import back_to_my_bookings_menu
 from database import Booking, Master
 from database.database import SessionFactory
-from database.models import MasterSchedule
+from database.models import MasterSchedule, UserSchedule
 from database.repository import create_booking
 from logger_config import logger
 from menu import main_menu
@@ -96,26 +96,35 @@ async def process_callback_date(callback_query: CallbackQuery):
         with SessionFactory() as session:
             selected_date = datetime.strptime(date, '%Y-%m-%d').date()
 
-            bookings = session.query(Booking).filter(
-                Booking.master_id == master_id,
-                func.date(Booking.booking_datetime) == selected_date
-            ).all()
+            # Проверяем, заблокирован ли весь день
+            user_schedule_entry = session.query(UserSchedule).filter(
+                UserSchedule.user_id == master_id,
+                UserSchedule.date == selected_date
+            ).first()
 
+            day_blocked = user_schedule_entry and user_schedule_entry.is_blocked
+
+            # Получаем все заблокированные слоты на выбранную дату
             blocked_times = set()
-            for booking in bookings:
-                if booking.status != "cancelled":
-                    booked_hour = booking.booking_datetime.hour
-                    for i in range(0, 4):
-                        blocked_hour = booked_hour + i
-                        if start_time <= blocked_hour <= end_time:
-                            blocked_times.add(f"{blocked_hour:02}:00")
+            if not day_blocked:  # Если день не заблокирован, проверяем заблокированные слоты
+                master_schedule = session.query(MasterSchedule).filter(
+                    MasterSchedule.master_id == master_id,
+                    MasterSchedule.day_of_week == selected_date.strftime('%A'),
+                    MasterSchedule.is_blocked == True
+                ).all()
+
+                for entry in master_schedule:
+                    blocked_hour = entry.start_time.hour
+                    blocked_times.add(f"{blocked_hour:02}:00")
 
             time_buttons = []
             row = []
             for time in time_slots:
-                if time in blocked_times:
+                if day_blocked or time in blocked_times:
+                    # Для заблокированных слотов используем крестик
                     row.append(InlineKeyboardButton(text=f"❌ {time}", callback_data="ignore"))
                 else:
+                    # Для доступных слотов показываем иконку часов
                     row.append(
                         InlineKeyboardButton(text=f"🕒 {time}", callback_data=f"time_{master_id}_{selected_date}_{time}:00"))
 
@@ -126,6 +135,12 @@ async def process_callback_date(callback_query: CallbackQuery):
             if row:
                 time_buttons.append(row)
 
+            # Добавляем кнопку для управления блокировкой дня
+            if day_blocked:
+                time_buttons.append([InlineKeyboardButton(text="Открыть день", callback_data=f"open_day_{selected_date}")])
+            else:
+                time_buttons.append([InlineKeyboardButton(text="Закрыть день", callback_data=f"close_day_{selected_date}")])
+
             time_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"master_{master_id}")])
             await callback_query.message.edit_text(
                 "⏰ *Выберите доступное время:*",
@@ -135,6 +150,7 @@ async def process_callback_date(callback_query: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка при обработке времени: {e}")
         await callback_query.answer("❌ *Произошла ошибка при обработке времени.*", show_alert=True)
+
 
 @router_booking.callback_query(lambda c: c.data.startswith('time_'))
 async def process_callback_time(callback_query: CallbackQuery):
@@ -153,7 +169,28 @@ async def process_callback_time(callback_query: CallbackQuery):
     logger.info(f"Пользователь {user_id} выбрал время {selected_time} для мастера {master_id} на дату {date}")
 
     try:
+        # Проверяем, заблокирован ли выбранный слот
         with SessionFactory() as session:
+            blocked_slots = set(
+                entry.start_time.strftime('%H:%M') for entry in session.query(MasterSchedule).filter(
+                    MasterSchedule.master_id == master_id,
+                    MasterSchedule.day_of_week == datetime.strptime(date, '%Y-%m-%d').strftime('%A'),
+                    MasterSchedule.is_blocked == True
+                ).all()
+            )
+
+            # Если выбранный час заблокирован, отменяем запись
+            if selected_time in blocked_slots:
+                await callback_query.message.edit_text(
+                    f"К сожалению, выбранное время {selected_time} заблокировано. Пожалуйста, выберите другое время.",
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data=f"date_{master_id}_{date}")]]
+                    )
+                )
+                logger.info(f"Пользователь {user_id} попытался выбрать заблокированное время {selected_time}.")
+                return
+
+            # Если есть активная запись, проверяем, можно ли записаться
             active_booking = session.query(Booking).filter(
                 Booking.user_id == user_id,
                 Booking.status == "new",
@@ -468,13 +505,11 @@ async def cancel_booking(callback_query: CallbackQuery):
                 await callback_query.answer("⚠️ Запись уже отменена.", show_alert=True)
                 return
 
-            # Обновляем статус записи
             booking.status = "cancelled"
             session.commit()
 
             logger.info(f"Запись ID {booking_id} успешно отменена пользователем ID {user_id}.")
 
-            # Сообщение пользователю о том, что запись отменена
             await callback_query.message.edit_text(
                 "✅ Ваша запись была успешно отменена.",
                 reply_markup=InlineKeyboardMarkup(
@@ -482,7 +517,6 @@ async def cancel_booking(callback_query: CallbackQuery):
                 )
             )
 
-            # Уведомление мастеру
             master = session.query(Master).filter(Master.master_id == booking.master_id).first()
             if master:
                 try:
@@ -495,7 +529,6 @@ async def cancel_booking(callback_query: CallbackQuery):
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления мастеру {master.master_id}: {e}")
 
-            # Уведомление пользователю (владельцу записи)
             if booking.user_id:
                 try:
                     await callback_query.bot.send_message(

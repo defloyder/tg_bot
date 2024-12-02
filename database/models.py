@@ -1,11 +1,12 @@
 import uuid
 
-from sqlalchemy import create_engine, Column, String, DateTime, ForeignKey, BigInteger, Integer, Enum, Date, Time, Boolean
+from sqlalchemy import Column, String, DateTime, ForeignKey, BigInteger, Integer, Date, Time, \
+    Boolean
 from sqlalchemy.orm import relationship
+
 from database.database import Base
 
 
-## Таблица User
 class User(Base):
     __tablename__ = 'user'
 
@@ -15,11 +16,10 @@ class User(Base):
     role = Column(String(255), nullable=True)
 
 
-# Таблица Master
 class Master(Base):
     __tablename__ = 'master'
 
-    master_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))  # UUID как строка
+    master_id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     master_name = Column(String(255), nullable=True)
     master_description = Column(String(255), nullable=True)
     master_photo = Column(String(255), nullable=True)
@@ -40,7 +40,6 @@ class Booking(Base):
     master = relationship("Master", backref="bookings")
 
 
-# Таблица PriceList
 class PriceList(Base):
     __tablename__ = 'price_list'
 
@@ -63,13 +62,14 @@ class MasterSchedule(Base):
     __tablename__ = 'master_schedule'
 
     schedule_id = Column(Integer, primary_key=True)
-    master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)  # ID мастера
-    day_of_week = Column(String, nullable=False)  # День недели
-    start_time = Column(Time, nullable=False)  # Начало рабочего времени
-    end_time = Column(Time, nullable=False)  # Конец рабочего времени
-    is_blocked = Column(Boolean, default=False)  # Поле для блокировки
+    master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)
+    day_of_week = Column(String, nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    is_blocked = Column(Boolean, default=False)
 
     master = relationship("Master", back_populates="schedules")
+
 
 Master.schedules = relationship("MasterSchedule", back_populates="master")
 
@@ -78,9 +78,9 @@ class UserSchedule(Base):
     __tablename__ = 'user_schedule'
 
     schedule_id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey('user.user_id'), nullable=False)  # Связь с пользователем
-    day_of_week = Column(String, nullable=False)  # День недели
-    date = Column(Date, nullable=False)  # Дата (вместо day_of_week)
-    is_blocked = Column(Boolean, default=False)  # Флаг блокировки
+    user_id = Column(BigInteger, ForeignKey('user.user_id'), nullable=False)
+    day_of_week = Column(String, nullable=False)
+    date = Column(Date, nullable=False)
+    is_blocked = Column(Boolean, default=False)
 
     user = relationship("User", backref="user_schedule")

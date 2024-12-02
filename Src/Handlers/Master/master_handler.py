@@ -1,18 +1,15 @@
-import types
-from datetime import datetime
-import asyncio
+from aiogram import Router
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
+from aiogram.types import CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 from aiogram.types import InputMediaPhoto
 from sqlalchemy.exc import IntegrityError
-from aiogram.types import CallbackQuery
 
 from database import Master, Booking
 from database.database import SessionFactory
 from database.models import MasterSchedule, UserSchedule
-from database.repository import create_master
 from logger_config import logger
 from menu import ADMIN_ID, main_menu
 
@@ -25,7 +22,6 @@ class AddMasterStates(StatesGroup):
     waiting_for_description = State()
     waiting_for_photo = State()
     confirmation = State()
-
 
 
 class EditMasterStates(StatesGroup):
@@ -46,6 +42,7 @@ async def start_adding_master(callback_query: CallbackQuery, state: FSMContext):
     else:
         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
         logger.warning(f"Пользователь {user_id} попытался добавить мастера.")
+
 
 @router_master.message(AddMasterStates.waiting_for_id)
 async def process_id(message: Message, state: FSMContext):
@@ -88,6 +85,7 @@ async def process_name(message: Message, state: FSMContext):
     await state.update_data(master_name=master_name)
     await message.answer("📝 Теперь введите описание мастера (или напишите 'пропустить' для пропуска):")
     await state.set_state(AddMasterStates.waiting_for_description)
+
 
 @router_master.message(AddMasterStates.waiting_for_description)
 async def process_description(message: Message, state: FSMContext):
@@ -179,8 +177,6 @@ async def edit_master(callback_query: CallbackQuery):
     else:
         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
         logger.warning(f"Пользователь {user_id} пытался редактировать мастера.")
-
-
 
 
 @router_master.callback_query(lambda c: c.data.startswith("edit_"))
@@ -325,7 +321,7 @@ async def delete_master(callback_query: CallbackQuery, state: FSMContext):
 async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMContext):
     if callback_query.from_user.id in ADMIN_ID:
         try:
-            master_id = int(callback_query.data.split("_")[2])  # Извлекаем master_id из callback
+            master_id = int(callback_query.data.split("_")[2])
         except (IndexError, ValueError) as e:
             logger.error(f"Ошибка при извлечении master_id из callback {callback_query.data}: {e}")
             await callback_query.answer("Ошибка при обработке запроса. Попробуйте снова.", show_alert=True)
@@ -337,27 +333,24 @@ async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMConte
             master = session.query(Master).filter(Master.master_id == master_id).first()
 
             if master:
-                # Проверяем записи мастера на статус "cancelled" или не активные
-                active_bookings = session.query(Booking).filter(Booking.master_id == master_id, Booking.status != 'cancelled').all()
+                active_bookings = session.query(Booking).filter(Booking.master_id == master_id,
+                                                                Booking.status != 'cancelled').all()
 
                 if active_bookings:
-                    await callback_query.message.edit_text(f"Невозможно удалить мастера {master.master_name}, так как у него есть активные записи.")
+                    await callback_query.message.edit_text(
+                        f"Невозможно удалить мастера {master.master_name}, так как у него есть активные записи.")
                     return
 
                 try:
-                    # Удаляем все расписания мастера
                     session.query(MasterSchedule).filter(MasterSchedule.master_id == master_id).delete()
                     logger.info(f"Все расписания мастера {master.master_name} были удалены.")
 
-                    # Удаляем все записи о пользователях, связанных с этим мастером, если необходимо
                     session.query(UserSchedule).filter(UserSchedule.user_id == master_id).delete()
                     logger.info(f"Все записи пользователей для мастера {master.master_name} были удалены.")
 
-                    # Удаляем все активные бронирования мастера (если такие есть)
                     session.query(Booking).filter(Booking.master_id == master_id).delete()
                     logger.info(f"Все бронирования мастера {master.master_name} были удалены.")
 
-                    # Удаляем мастера
                     session.delete(master)
                     session.commit()
 
@@ -371,7 +364,8 @@ async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMConte
                 await callback_query.message.edit_text("Мастер не найден.")
     else:
         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
-        logger.warning(f"Пользователь {callback_query.from_user.id} пытался удалить мастера, но не является администратором.")
+        logger.warning(
+            f"Пользователь {callback_query.from_user.id} пытался удалить мастера, но не является администратором.")
 
 
 @router_master.callback_query(lambda c: c.data == "main_menu")
@@ -437,7 +431,6 @@ async def show_master_info(callback_query: CallbackQuery):
 
             if master.master_photo:
                 try:
-                    # Отправляем фото с описанием
                     await callback_query.message.edit_media(
                         media=InputMediaPhoto(media=master.master_photo, caption=master_info),
                         reply_markup=keyboard

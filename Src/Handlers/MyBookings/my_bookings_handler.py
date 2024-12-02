@@ -2,12 +2,10 @@ import logging
 from datetime import datetime
 
 from aiogram import Router
-from aiogram.client import bot
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
-from database import Booking, Master, User  # Модели таблицы записей и мастеров
+from database import Booking, Master, User
 from database.database import SessionFactory
 from menu import my_bookings_menu
 
@@ -26,6 +24,7 @@ async def process_my_bookings(callback_query: CallbackQuery):
         parse_mode="HTML"
     )
 
+
 @router_bookings.callback_query(lambda c: c.data == "active_bookings")
 async def process_active_bookings(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
@@ -33,25 +32,21 @@ async def process_active_bookings(callback_query: CallbackQuery):
 
     try:
         with SessionFactory() as session:
-            # Проверяем, является ли пользователь мастером
             is_master = session.query(Master).filter(Master.master_id == user_id).first()
 
             if is_master:
-                # Для мастера запрос активных записей
                 active_bookings = session.query(Booking).filter(
                     Booking.master_id == user_id,
                     Booking.status == 'new',
                     Booking.booking_datetime > current_time
                 ).order_by(Booking.booking_datetime).all()
             else:
-                # Для обычного пользователя запрос активных записей
                 active_bookings = session.query(Booking).filter(
                     Booking.user_id == user_id,
                     Booking.status == 'new',
                     Booking.booking_datetime > current_time
                 ).order_by(Booking.booking_datetime).all()
 
-            # Обрабатываем результат
             if not active_bookings:
                 await callback_query.message.edit_text(
                     "ℹ <b>У вас нет активных записей.</b>",
@@ -60,19 +55,16 @@ async def process_active_bookings(callback_query: CallbackQuery):
                 )
                 return
 
-            # Создаем кнопки для активных записей
             buttons = []
             for booking in active_bookings:
                 booking_date = booking.booking_datetime.strftime('%d.%m.%Y')
                 booking_time = booking.booking_datetime.strftime('%H:%M')
 
                 if is_master:
-                    # Для мастера показываем имя клиента
                     user = session.query(User).filter(User.user_id == booking.user_id).first()
                     user_name = user.username if user else "<i>Неизвестно</i>"
                     label = f"👤 Клиент: {user_name}"
                 else:
-                    # Для пользователя показываем имя мастера
                     master = session.query(Master).filter(Master.master_id == booking.master_id).first()
                     master_name = master.master_name if master else "<i>Неизвестно</i>"
                     label = f"✂ Мастер: {master_name}"
@@ -84,11 +76,9 @@ async def process_active_bookings(callback_query: CallbackQuery):
                     )
                 ])
 
-            # Добавляем кнопку "Назад"
             buttons.append([InlineKeyboardButton(text="⬅ Назад", callback_data="my_bookings")])
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            # Отправляем сообщение с кнопками
             await callback_query.message.edit_text(
                 "<b>Ваши активные записи:</b>",
                 reply_markup=markup,
@@ -112,18 +102,15 @@ async def process_user_history(callback_query: CallbackQuery):
 
     try:
         with SessionFactory() as session:
-            # Проверяем, является ли пользователь мастером
             is_master = session.query(Master).filter(Master.master_id == user_id).first()
 
             if is_master:
-                # Получаем записи для мастера
                 user_history_bookings = session.query(Booking).filter(
                     Booking.master_id == user_id,
                     (Booking.booking_datetime < current_time) |
                     (Booking.status == "cancelled")
                 ).order_by(Booking.booking_datetime.desc()).all()
             else:
-                # Получаем записи для пользователя
                 user_history_bookings = session.query(Booking).filter(
                     Booking.user_id == user_id,
                     (Booking.booking_datetime < current_time) |
@@ -157,7 +144,7 @@ async def process_user_history(callback_query: CallbackQuery):
                 buttons.append([
                     InlineKeyboardButton(
                         text=f"📅 {booking_date} ⏰ {booking_time} - {status} - {label}",
-                        callback_data="ignore"  # Невзаимодействующая кнопка
+                        callback_data="ignore"
                     )
                 ])
 
@@ -185,6 +172,7 @@ async def process_user_history(callback_query: CallbackQuery):
             parse_mode="HTML"
         )
 
+
 @router_bookings.callback_query(lambda c: c.data.startswith("view_active_booking_"))
 async def process_view_active_booking(callback_query: CallbackQuery):
     """Обработчик для кнопки просмотра активной записи."""
@@ -200,10 +188,8 @@ async def process_view_active_booking(callback_query: CallbackQuery):
                                                        parse_mode="HTML")
                 return
 
-            # Определяем, является ли текущий пользователь мастером
             is_master = session.query(Master).filter(Master.master_id == callback_query.from_user.id).first()
 
-            # Получаем данные записи
             master = session.query(Master).filter(Master.master_id == booking.master_id).first()
             master_name = master.master_name if master else "<i>Неизвестно</i>"
 
@@ -213,9 +199,7 @@ async def process_view_active_booking(callback_query: CallbackQuery):
             booking_date = booking.booking_datetime.strftime('%d.%m.%Y')
             booking_time = booking.booking_datetime.strftime('%H:%M')
 
-            # Подготовка текста в зависимости от роли пользователя
             if is_master:
-                # Если текущий пользователь — мастер, выводим информацию о клиенте
                 details = (
                     f"<b>📅 Дата:</b> {booking_date}\n"
                     f"<b>⏰ Время:</b> {booking_time}\n"
@@ -223,21 +207,18 @@ async def process_view_active_booking(callback_query: CallbackQuery):
                     f"<b>🔗 ID клиента:</b> <a href='tg://user?id={booking.user_id}'>{booking.user_id}</a>\n"
                 )
             else:
-                # Если текущий пользователь — клиент, выводим информацию о мастере
                 details = (
                     f"<b>📅 Дата:</b> {booking_date}\n"
                     f"<b>⏰ Время:</b> {booking_time}\n"
                     f"<b>✂ Мастер:</b> {master_name}\n"
                 )
 
-            # Формируем кнопки для действий
             buttons = [
                 [InlineKeyboardButton(text="❌ Отменить запись", callback_data=f"cancel_booking_{booking.booking_id}")],
                 [InlineKeyboardButton(text="⬅ Назад", callback_data="active_bookings")]
             ]
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-            # Отправляем сообщение с деталями записи
             await callback_query.message.edit_text(details, reply_markup=markup, parse_mode="HTML")
 
     except SQLAlchemyError as e:
@@ -262,7 +243,6 @@ async def process_cancel_booking(callback_query: CallbackQuery):
 
     try:
         with SessionFactory() as session:
-            # Получение записи по ID
             booking = session.query(Booking).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
@@ -274,7 +254,6 @@ async def process_cancel_booking(callback_query: CallbackQuery):
                                                        reply_markup=back_to_my_bookings_menu())
                 return
 
-            # Обновляем статус записи на "cancelled"
             session.execute(
                 Booking.__table__.update().where(Booking.booking_id == booking_id).values(status="cancelled")
             )
@@ -282,7 +261,6 @@ async def process_cancel_booking(callback_query: CallbackQuery):
 
             logger.debug(f"Запись ID {booking.booking_id} успешно отменена.")
 
-            # Уведомление пользователя
             if booking.user_id:
                 try:
                     await callback_query.bot.send_message(

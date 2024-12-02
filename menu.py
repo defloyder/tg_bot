@@ -1,24 +1,22 @@
-from aiogram import Router
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy.orm import Session
-from database import Master
-from database.database import SessionFactory
 import logging
 
-# Идентификаторы администраторов
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from database import Master
+from database.database import SessionFactory
+
 ADMIN_ID = [475953677, 962757762]
+
 
 async def main_menu(user_id):
     """Главное меню для пользователя."""
     try:
         with SessionFactory() as session:
-            # Проверяем, является ли пользователь мастером
             master_exists = session.query(Master).filter(Master.master_id == user_id).first()
 
             if master_exists:
                 return await updated_master_menu(user_id)
 
-        # Кнопки для обычных пользователей
         buttons = [
             [
                 InlineKeyboardButton(text="ℹ️ О мастерах", callback_data="masters"),
@@ -28,7 +26,6 @@ async def main_menu(user_id):
             [InlineKeyboardButton(text="📝 Мои записи", callback_data="my_bookings")]
         ]
 
-        # Добавляем админ-панель для администраторов
         if user_id in ADMIN_ID:
             buttons.append([InlineKeyboardButton(text="🛠 Админ-панель", callback_data="admin_panel")])
 
@@ -36,9 +33,10 @@ async def main_menu(user_id):
 
     except Exception as e:
         logging.error(f"Ошибка при извлечении мастера из базы данных: {e}")
-        return InlineKeyboardMarkup(inline_keyboard=[  # если произошла ошибка
+        return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="❌ Возникла ошибка", callback_data="error")]
         ])
+
 
 async def updated_master_menu(user_id):
     """Обновленное меню для мастеров с учетом админ-панели, если пользователь является администратором."""
@@ -46,8 +44,7 @@ async def updated_master_menu(user_id):
         with SessionFactory() as session:
             master = session.query(Master).filter(Master.master_id == user_id).first()
 
-            if master:  # если мастер существует
-                # создаем базовое меню мастера
+            if master:
                 menu_buttons = [
                     [InlineKeyboardButton(text="🟢 Активные записи", callback_data="active_bookings")],
                     [InlineKeyboardButton(text="📖 История записей", callback_data="booking_history")],
@@ -55,22 +52,19 @@ async def updated_master_menu(user_id):
                     [InlineKeyboardButton(text="🔲 Управление окошками", callback_data="windows")]
                 ]
 
-                # если мастер является администратором, добавляем кнопку админ-панели
                 if user_id in ADMIN_ID:
                     menu_buttons.append([InlineKeyboardButton(text="🛠 Админ-панель", callback_data="admin_panel")])
 
-                # создаем и возвращаем InlineKeyboardMarkup с обновленным списком кнопок
                 return InlineKeyboardMarkup(inline_keyboard=menu_buttons)
-            else:  # если мастер был удален
+            else:
                 return InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="⚠️ Этот мастер был удалён", callback_data="main_menu")]
                 ])
     except Exception as e:
         logging.error(f"Ошибка при проверке мастера из базы данных: {e}")
-        return InlineKeyboardMarkup(inline_keyboard=[  # если произошла ошибка
+        return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="❌ Возникла ошибка", callback_data="error")]
         ])
-
 
 
 def back_to_master_menu():
