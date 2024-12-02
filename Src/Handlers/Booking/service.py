@@ -9,7 +9,7 @@ from database.models import MasterSchedule, Booking, UserSchedule
 from logger_config import logger
 async def generate_calendar(master_id: str, year: int = None, month: int = None):
     """
-    Генерация календаря для мастера с учетом блокированных дат и времени.
+    Генерация календаря для мастера с возможностью перелистывания вперед.
     """
     now = datetime.now()
     current_date = now.date()
@@ -26,20 +26,17 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
 
     try:
         with SessionFactory() as session:
-            # Собираем данные о блокированных датах и времени для мастера
-            blocked_schedules = session.query(UserSchedule).filter(
-                UserSchedule.user_id == master_id,
-                UserSchedule.is_blocked == True
-            ).all()
-
-            # Преобразуем в структуру для удобства проверки
-            blocked_by_date = {}
-            for schedule in blocked_schedules:
-                blocked_by_date.setdefault(schedule.date, []).append(schedule.start_time)
+            # Собираем блокированные дни для мастера
+            blocked_dates = set(
+                schedule.date for schedule in session.query(UserSchedule).filter(
+                    UserSchedule.user_id == master_id,
+                    UserSchedule.is_blocked == True
+                ).all()
+            )
 
     except Exception as e:
-        logger.error(f"Ошибка при запросе блокированных часов для мастера {master_id}: {e}")
-        blocked_by_date = {}
+        logger.error(f"Ошибка при запросе блокированных дней для мастера {master_id}: {e}")
+        blocked_dates = set()
 
     days_in_month = calendar.monthrange(year, month)[1]
 
@@ -52,19 +49,14 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
     # Создаем календарь для каждого дня месяца
     for day in range(1, days_in_month + 1):
         try:
-            date = datetime(year, month, day).date()
-            date_str = f"{day:02}"
-            callback_data = f'date_{master_id}_{date}'
+            date = datetime(year, month, day)
+            date_str = date.strftime("%d")
+            callback_data = f'date_{master_id}_{date.strftime("%Y-%m-%d")}'
 
-            # Проверяем доступность дня и часов
-            if date <= current_date:
-                # Прошедшие даты помечаются недоступными
-                week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
-            elif date in blocked_by_date and len(blocked_by_date[date]) >= 24:
-                # Если все часы заблокированы
+            # Проверка, заблокирован ли день для этого дня
+            if date.date() <= current_date or date.date() in blocked_dates:
                 week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
             else:
-                # Если день частично доступен
                 week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
 
             # Если в ряду 7 кнопок, добавляем их в календарь
