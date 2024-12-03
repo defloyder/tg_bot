@@ -109,7 +109,7 @@ async def process_callback_date(callback_query: CallbackQuery):
             if not day_blocked:  # Если день не заблокирован, проверяем заблокированные слоты
                 master_schedule = session.query(MasterSchedule).filter(
                     MasterSchedule.master_id == master_id,
-                    MasterSchedule.day_of_week == selected_date.strftime('%A'),
+                    MasterSchedule.date == selected_date,  # Теперь используем date
                     MasterSchedule.is_blocked == True
                 ).all()
 
@@ -135,13 +135,9 @@ async def process_callback_date(callback_query: CallbackQuery):
             if row:
                 time_buttons.append(row)
 
-            # Добавляем кнопку для управления блокировкой дня
-            if day_blocked:
-                time_buttons.append([InlineKeyboardButton(text="Открыть день", callback_data=f"open_day_{selected_date}")])
-            else:
-                time_buttons.append([InlineKeyboardButton(text="Закрыть день", callback_data=f"close_day_{selected_date}")])
-
+            # Убираем кнопки "Открыть день" и "Закрыть день", так как это только для мастера
             time_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"master_{master_id}")])
+
             await callback_query.message.edit_text(
                 "⏰ *Выберите доступное время:*",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=time_buttons)
@@ -174,7 +170,7 @@ async def process_callback_time(callback_query: CallbackQuery):
             blocked_slots = set(
                 entry.start_time.strftime('%H:%M') for entry in session.query(MasterSchedule).filter(
                     MasterSchedule.master_id == master_id,
-                    MasterSchedule.day_of_week == datetime.strptime(date, '%Y-%m-%d').strftime('%A'),
+                    MasterSchedule.date == datetime.strptime(date, '%Y-%m-%d').date(),  # Используем точную дату
                     MasterSchedule.is_blocked == True
                 ).all()
             )
@@ -235,6 +231,7 @@ async def process_callback_time(callback_query: CallbackQuery):
         f"Вы выбрали {selected_time}. Теперь выберите минуты:",
         reply_markup=minute_buttons
     )
+
 
 
 @router_booking.callback_query(lambda c: c.data.startswith('minute_'))

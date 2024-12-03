@@ -64,7 +64,6 @@ class MasterSchedule(Base):
     schedule_id = Column(Integer, primary_key=True)
     master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)
     day_of_week = Column(String, nullable=False)
-    date = Column(Date, nullable=True)  # Поле для конкретной даты
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
     is_blocked = Column(Boolean, default=False)
