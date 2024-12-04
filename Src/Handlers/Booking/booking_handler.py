@@ -1,10 +1,9 @@
 import re
 from datetime import datetime, timedelta
-
+import time
 from aiogram import Router, Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from Src.Handlers.Booking.service import generate_calendar
@@ -16,15 +15,54 @@ from database.repository import create_booking
 from logger_config import logger
 from menu import main_menu
 
+import aioredis
+
+# Переименуйте переменную, чтобы избежать конфликта с именем модуля redis
+redis_client = aioredis.from_url("redis://localhost", decode_responses=True)
+
+
 scheduler = AsyncIOScheduler()
 blocked_times = {}
 
 router_booking = Router(name="booking")
 ADMIN_ID = [475953677, 962757762]
+TIME_WINDOW = 10
+MAX_CLICKS = 5
+
+
+# Код для работы с Redis
+async def is_flood(user_id: int, max_clicks: int, time_window: int) -> bool:
+    """
+    Проверка на флуда через Redis.
+    :param user_id: ID пользователя
+    :param max_clicks: Максимальное количество нажатий в пределах time_window
+    :param time_window: Время в секундах, за которое учитываются нажатия
+    :return: True, если количество нажатий превышает лимит, иначе False
+    """
+    key = f"flood:{user_id}"
+
+    # Инкрементируем счетчик нажатий
+    current_clicks = await redis_client.incr(key)
+
+    if current_clicks == 1:
+        # Устанавливаем TTL для счетчика на время окна
+        await redis_client.expire(key, time_window)
+
+    if current_clicks > max_clicks:
+        return True  # Превышен лимит нажатий
+
+    return False
+
 
 
 @router_booking.callback_query(lambda c: c.data == 'booking')
 async def process_callback_booking(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
+
     logger.info("Обработчик нажатия кнопки 'Записаться' запущен.")
     await callback_query.answer()
 
@@ -38,10 +76,10 @@ async def process_callback_booking(callback_query: CallbackQuery):
 
         master_menu = InlineKeyboardMarkup(
             inline_keyboard=[
-                                [InlineKeyboardButton(text=f"⚜️ {master.master_name}",
-                                                      callback_data=f"booking_master_{master.master_id}")]
-                                for master in masters
-                            ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]]
+                [InlineKeyboardButton(text=f"⚜️ {master.master_name}",
+                                      callback_data=f"booking_master_{master.master_id}")]
+                for master in masters
+            ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]]
         )
 
         await callback_query.message.edit_text("👨‍🔧 *Выберите мастера для записи:*", reply_markup=master_menu)
@@ -49,26 +87,31 @@ async def process_callback_booking(callback_query: CallbackQuery):
 
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при загрузке списка мастеров: {e}")
-        await callback_query.message.edit_text("❌ *Произошла ошибка. Попробуйте позже.*")
-
+        await callback_query.message.edit_text("❌ Произошла ошибка. Попробуйте позже.")
 
 @router_booking.callback_query(lambda c: c.data.startswith('booking_master_'))
 async def process_callback_master(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     try:
         data_parts = callback_query.data.split('_')
         if len(data_parts) != 3 or data_parts[0] != "booking" or data_parts[1] != "master":
             logger.error(f"Некорректный формат callback_data: {callback_query.data}")
-            await callback_query.answer("❌ *Некорректные данные. Попробуйте снова.*", show_alert=True)
+            await callback_query.answer("❌ Некорректные данные. Попробуйте снова.", show_alert=True)
             return
 
         master_id = data_parts[2]
+
         logger.debug(f"Пользователь выбрал мастера с ID: {master_id}")
 
         calendar_markup = await generate_calendar(master_id)
         if not calendar_markup:
             logger.error(f"Не удалось сгенерировать календарь для мастера {master_id}")
             await callback_query.message.edit_text(
-                "❌ *Не удалось загрузить календарь. Попробуйте позже.*",
+                "❌ Не удалось загрузить календарь. Попробуйте позже.",
                 reply_markup=None
             )
             return
@@ -78,11 +121,16 @@ async def process_callback_master(callback_query: CallbackQuery):
 
     except Exception as e:
         logger.error(f"Ошибка при возврате к выбору даты для мастера {callback_query.data}: {e}")
-        await callback_query.answer("❌ *Произошла ошибка при возврате к выбору даты.*", show_alert=True)
+        await callback_query.answer("❌ Произошла ошибка при возврате к выбору даты.", show_alert=True)
 
 
 @router_booking.callback_query(lambda c: c.data.startswith('date_'))
 async def process_callback_date(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     try:
         data = callback_query.data.split('_')
         master_id, date = data[1], data[2]
@@ -91,12 +139,11 @@ async def process_callback_date(callback_query: CallbackQuery):
 
         start_time = 10
         end_time = 22
-        time_slots = [f"{hour:02}:00" for hour in range(start_time, end_time + 1)]  # Время с 10:00 до 22:00
+        time_slots = [f"{hour:02}:00" for hour in range(start_time, end_time + 1)]
 
         with SessionFactory() as session:
             selected_date = datetime.strptime(date, '%Y-%m-%d').date()
 
-            # Проверяем, заблокирован ли весь день
             user_schedule_entry = session.query(UserSchedule).filter(
                 UserSchedule.user_id == master_id,
                 UserSchedule.date == selected_date
@@ -104,12 +151,11 @@ async def process_callback_date(callback_query: CallbackQuery):
 
             day_blocked = user_schedule_entry and user_schedule_entry.is_blocked
 
-            # Получаем все заблокированные слоты на выбранную дату
             blocked_times = set()
-            if not day_blocked:  # Если день не заблокирован, проверяем заблокированные слоты
+            if not day_blocked:
                 master_schedule = session.query(MasterSchedule).filter(
                     MasterSchedule.master_id == master_id,
-                    MasterSchedule.date == selected_date,  # Теперь используем date
+                    MasterSchedule.date == selected_date,
                     MasterSchedule.is_blocked == True
                 ).all()
 
@@ -121,12 +167,11 @@ async def process_callback_date(callback_query: CallbackQuery):
             row = []
             for time in time_slots:
                 if day_blocked or time in blocked_times:
-                    # Для заблокированных слотов используем крестик
                     row.append(InlineKeyboardButton(text=f"❌ {time}", callback_data="ignore"))
                 else:
-                    # Для доступных слотов показываем иконку часов
                     row.append(
-                        InlineKeyboardButton(text=f"🕒 {time}", callback_data=f"time_{master_id}_{selected_date}_{time}:00"))
+                        InlineKeyboardButton(text=f"🕒 {time}",
+                                             callback_data=f"time_{master_id}_{selected_date}_{time}:00"))
 
                 if len(row) == 3:
                     time_buttons.append(row)
@@ -135,7 +180,6 @@ async def process_callback_date(callback_query: CallbackQuery):
             if row:
                 time_buttons.append(row)
 
-            # Убираем кнопки "Открыть день" и "Закрыть день", так как это только для мастера
             time_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"master_{master_id}")])
 
             await callback_query.message.edit_text(
@@ -145,11 +189,16 @@ async def process_callback_date(callback_query: CallbackQuery):
             logger.debug(f"Доступные временные слоты отправлены пользователю.")
     except Exception as e:
         logger.error(f"Ошибка при обработке времени: {e}")
-        await callback_query.answer("❌ *Произошла ошибка при обработке времени.*", show_alert=True)
+        await callback_query.answer("❌ Произошла ошибка при обработке времени.", show_alert=True)
 
 
 @router_booking.callback_query(lambda c: c.data.startswith('time_'))
 async def process_callback_time(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     pattern = r'time_(\d+)_(\d{4}-\d{2}-\d{2})_(\d{2}):(\d{2})'
     match = re.match(pattern, callback_query.data)
 
@@ -165,7 +214,6 @@ async def process_callback_time(callback_query: CallbackQuery):
     logger.info(f"Пользователь {user_id} выбрал время {selected_time} для мастера {master_id} на дату {date}")
 
     try:
-        # Проверяем, заблокирован ли выбранный слот
         with SessionFactory() as session:
             blocked_slots = set(
                 entry.start_time.strftime('%H:%M') for entry in session.query(MasterSchedule).filter(
@@ -175,7 +223,6 @@ async def process_callback_time(callback_query: CallbackQuery):
                 ).all()
             )
 
-            # Если выбранный час заблокирован, отменяем запись
             if selected_time in blocked_slots:
                 await callback_query.message.edit_text(
                     f"К сожалению, выбранное время {selected_time} заблокировано. Пожалуйста, выберите другое время.",
@@ -186,7 +233,6 @@ async def process_callback_time(callback_query: CallbackQuery):
                 logger.info(f"Пользователь {user_id} попытался выбрать заблокированное время {selected_time}.")
                 return
 
-            # Если есть активная запись, проверяем, можно ли записаться
             active_booking = session.query(Booking).filter(
                 Booking.user_id == user_id,
                 Booking.status == "new",
@@ -212,7 +258,6 @@ async def process_callback_time(callback_query: CallbackQuery):
         await callback_query.answer("Произошла ошибка при проверке активной записи. Попробуйте позже.", show_alert=True)
         return
 
-    # Перенаправление на выбор минут
     minute_buttons = InlineKeyboardMarkup(
         inline_keyboard=[  # Кнопки минут
             [
@@ -233,9 +278,13 @@ async def process_callback_time(callback_query: CallbackQuery):
     )
 
 
-
 @router_booking.callback_query(lambda c: c.data.startswith('minute_'))
 async def process_callback_minute(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     # Паттерн для поиска данных в callback
     pattern = r'minute_(\d+)_(\d{4}-\d{2}-\d{2})_(\d{2})_(\d{2})_(\d{2})'
     match = re.match(pattern, callback_query.data)
@@ -283,7 +332,6 @@ async def process_callback_minute(callback_query: CallbackQuery):
         await callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         return
 
-    # Отправка кнопок подтверждения
     confirm_buttons = InlineKeyboardMarkup(
         inline_keyboard=[[
             InlineKeyboardButton(text="Да", callback_data=f"confirm_{master_id}_{date}_{final_time_str}"),
@@ -299,9 +347,39 @@ async def process_callback_minute(callback_query: CallbackQuery):
     )
 
 
+async def block_time_slots(session, master_id, booking_datetime):
+    """Блокировка выбранного времени и следующего часа."""
+    slots_to_block = [booking_datetime, booking_datetime + timedelta(hours=1)]
+
+    for time_slot in slots_to_block:
+        day_of_week = time_slot.weekday()
+
+        existing_entry = session.query(MasterSchedule).filter(
+            MasterSchedule.master_id == master_id,
+            MasterSchedule.date == time_slot.date(),
+            MasterSchedule.start_time == time_slot.time(),
+        ).first()
+
+        if not existing_entry:
+            new_schedule = MasterSchedule(
+                master_id=master_id,
+                day_of_week=day_of_week,
+                date=time_slot.date(),
+                start_time=time_slot.time(),
+                is_blocked=True
+            )
+            session.add(new_schedule)
+            logger.info(f"Заблокирован слот: {time_slot} для мастера {master_id}.")
+    session.commit()
+
+
 @router_booking.callback_query(lambda c: c.data.startswith('confirm_') and not c.data.startswith('confirm_delete_'))
 async def process_confirm_time(callback_query: CallbackQuery):
-    # Новый паттерн, который также учитывает ситуацию с confirm_delete
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     pattern = r'confirm_(\d+)_([\d]{4}-[\d]{2}-[\d]{2})_([\d]{2}:[\d]{2})'
     match = re.match(pattern, callback_query.data)
 
@@ -310,12 +388,10 @@ async def process_confirm_time(callback_query: CallbackQuery):
         await callback_query.answer("Ошибка при обработке данных. Попробуйте снова.", show_alert=True)
         return
 
-    # Обработка данных, если данные совпали с паттерном
     master_id = match.group(1)
     date = match.group(2)
     time = match.group(3)
 
-    # Преобразуем дату и время в объект datetime
     try:
         booking_datetime = datetime.strptime(f"{date} {time}", '%Y-%m-%d %H:%M')
     except ValueError as e:
@@ -328,7 +404,6 @@ async def process_confirm_time(callback_query: CallbackQuery):
 
     try:
         with SessionFactory() as session:
-            # Проверка на пересечение времени
             overlapping_booking = session.query(Booking).filter(
                 Booking.master_id == master_id,
                 Booking.status == "new",
@@ -343,7 +418,6 @@ async def process_confirm_time(callback_query: CallbackQuery):
                 )
                 return
 
-            # Создание нового бронирования
             new_booking = create_booking(
                 session=session,
                 booking_datetime=booking_datetime,
@@ -373,9 +447,9 @@ async def process_confirm_time(callback_query: CallbackQuery):
                 logger.error(f"Ошибка при отправке уведомления мастеру {master_id}: {e}")
 
             await schedule_booking_reminder(booking_datetime, callback_query.bot, user_id, master_name)
-            blocked_times.setdefault((master_id, date), set()).add(time)
 
-            # Текст для пользователя
+            await block_time_slots(session, master_id, booking_datetime)
+
             await callback_query.message.edit_text(
                 f"✅ *Запись подтверждена!*\n\n"
                 f"📅 *Дата:* {date}\n"
@@ -394,22 +468,26 @@ async def process_confirm_time(callback_query: CallbackQuery):
 
 
 async def handle_delete_booking(callback_query, master_id):
-    # Логика для удаления бронирования или подтверждения удаления
     logger.info(f"Пользователь запросил удаление записи для мастера {master_id}.")
-    await callback_query.answer("Запрос на удаление обработки...")  # Дополнительно - подробности
+    await callback_query.answer("Запрос на удаление обработки...")
 
 
 @router_booking.callback_query(lambda c: c.data == 'cancel_booking')
 async def process_cancel_booking(callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id  # Получаем ID пользователя из callback_query
+    user_id = callback_query.from_user.id
     await callback_query.message.edit_text(
         "❌ Создание записи отменено. Вы возвращены в главное меню.",
-        reply_markup=await main_menu(user_id)  # Передаем user_id в main_menu
+        reply_markup=await main_menu(user_id)
     )
 
 
 @router_booking.callback_query(lambda c: c.data.startswith('master_'))
 async def process_callback_master_return(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     logger.debug(f"Получен callback_data: {callback_query.data}")
     try:
         data_parts = callback_query.data.split('_')
@@ -443,6 +521,11 @@ async def process_callback_master_return(callback_query: CallbackQuery):
 
 @router_booking.callback_query(lambda c: c.data.startswith('edit_booking_'))
 async def process_edit_booking(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     """Обработчик для кнопки 'Редактировать' записи, где мастер остаётся прежним, только дата и время меняются."""
     try:
         booking_id = int(callback_query.data.split("_")[-1])
@@ -464,7 +547,7 @@ async def process_edit_booking(callback_query: CallbackQuery):
 
             old_booking_datetime = booking.booking_datetime.strftime('%d.%m.%Y %H:%M')
 
-            calendar_markup = await generate_calendar(booking.master_id)  # Генерация календаря для старого мастера
+            calendar_markup = await generate_calendar(booking.master_id)
             await callback_query.message.edit_text(
                 f"Вы выбрали мастера: {master_name}, дата: {old_booking_datetime}\nВыберите новую дату для редактирования записи.",
                 reply_markup=calendar_markup)
@@ -474,8 +557,14 @@ async def process_edit_booking(callback_query: CallbackQuery):
         await callback_query.message.edit_text("Произошла ошибка при редактировании записи. Попробуйте позже.",
                                                reply_markup=back_to_my_bookings_menu())
 
+
 @router_booking.callback_query(lambda c: c.data.startswith('cancel_booking_'))
 async def cancel_booking(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     try:
         pattern = r'cancel_booking_(\d+)'
         match = re.match(pattern, callback_query.data)
@@ -489,7 +578,6 @@ async def cancel_booking(callback_query: CallbackQuery):
         user_id = callback_query.from_user.id
 
         with SessionFactory() as session:
-            # Получаем запись по ID
             booking = session.query(Booking).filter(Booking.booking_id == booking_id).first()
 
             if not booking:
@@ -557,21 +645,17 @@ async def send_booking_reminder(bot: Bot, user_id: int, master_name: str, bookin
 
 
 async def schedule_booking_reminder(booking_datetime, bot, user_id, master_name):
-    # Рассчитать время напоминания
     reminder_time = booking_datetime - timedelta(days=1)
     reminder_time = reminder_time.replace(hour=8, minute=0, second=0, microsecond=0)
 
-    # Если время напоминания уже прошло
     if reminder_time < datetime.now():
         logger.info(
             f"Время напоминания уже прошло ({reminder_time}). "
             f"Отправляем напоминание сразу пользователю {user_id}."
         )
-        # Отправить напоминание немедленно
         await send_booking_reminder(bot, user_id, master_name, booking_datetime)
         return
 
-    # Если время напоминания еще не наступило, запланировать его
     job = scheduler.add_job(
         send_booking_reminder,
         'date',
@@ -584,6 +668,11 @@ async def schedule_booking_reminder(booking_datetime, bot, user_id, master_name)
 
 @router_booking.callback_query(lambda c: c.data.startswith('date_'))
 async def process_callback_date(callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
+        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+                                    show_alert=True)
+        return
     data = callback_query.data.split('_')
     master_id, date = data[1], data[2]
     logger.debug(f"Пользователь выбрал дату для записи: {date}, мастер ID: {master_id}")
@@ -600,7 +689,8 @@ async def process_callback_date(callback_query: CallbackQuery):
 
             time_buttons = []
             for time in available_times:
-                time_buttons.append([InlineKeyboardButton(text=f"⏰ {time}", callback_data=f"time_{master_id}_{date}_{time}")])
+                time_buttons.append(
+                    [InlineKeyboardButton(text=f"⏰ {time}", callback_data=f"time_{master_id}_{date}_{time}")])
 
             markup = InlineKeyboardMarkup(inline_keyboard=time_buttons)
             await callback_query.message.edit_text("🕒 Выберите доступное время для записи:", reply_markup=markup)

@@ -9,6 +9,7 @@ def get_handlers_router() -> Router:
     from .MasterAdmin import master_admin_handler
     from .Message import message_handler
     from .Schedule import master_schedule_handler
+    from .Price import price_handler
 
 
 
@@ -22,6 +23,9 @@ def get_handlers_router() -> Router:
     router_main.include_router(master_admin_handler.router_master_admin)
     router_main.include_router(message_handler.router_chat)
     router_main.include_router(master_schedule_handler.router_schedule)
+    router_main.include_router(price_handler.router_price)
 
 
     return router_main
+
+

@@ -1,6 +1,6 @@
 import calendar
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, time as datetime_time, timedelta  # Используем алиас 'datetime_time'
+from datetime import datetime, time as datetime_time, timedelta
 
 from aiogram import Router
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -55,11 +55,11 @@ async def generate_schedule_calendar(master_id, month_offset=0):
     """Генерация календаря для управления расписанием."""
     now = datetime.now() + relativedelta(months=month_offset)
     days_in_month = calendar.monthrange(now.year, now.month)[1]
-    start_of_month = datetime(now.year, now.month, 1).date()  # Это возвращает объект datetime.date
+    start_of_month = datetime(now.year, now.month, 1).date()
     first_weekday = start_of_month.weekday()
 
     month_name = now.strftime('%B %Y')
-    calendar_buttons = [[InlineKeyboardButton(text=month_name, callback_data="ignore")]]  # Заголовок месяца
+    calendar_buttons = [[InlineKeyboardButton(text=month_name, callback_data="ignore")]]
 
     week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
     calendar_buttons.append([InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
@@ -68,13 +68,12 @@ async def generate_schedule_calendar(master_id, month_offset=0):
 
     with SessionFactory() as session:
         try:
-            # Собираем заблокированные даты для мастера и пользователя
             blocked_dates_master = set(
                 schedule.date for schedule in session.query(MasterSchedule).filter(
                     MasterSchedule.master_id == master_id,
                     MasterSchedule.is_blocked == True,
-                    MasterSchedule.day_of_week >= start_of_month,
-                    MasterSchedule.day_of_week <= start_of_month + timedelta(days=days_in_month - 1)
+                    MasterSchedule.date >= start_of_month,
+                    MasterSchedule.date <= start_of_month + timedelta(days=days_in_month - 1)
                 ).all()
             )
 
@@ -89,48 +88,65 @@ async def generate_schedule_calendar(master_id, month_offset=0):
 
             blocked_dates = blocked_dates_master | blocked_dates_user  # Объединяем заблокированные даты
 
+            # Собираем даты, где заблокирован весь день
+            fully_blocked_dates = set(
+                schedule.date for schedule in session.query(UserSchedule).filter(
+                    UserSchedule.user_id == master_id,
+                    UserSchedule.is_blocked == True,
+                    UserSchedule.date >= start_of_month,
+                    UserSchedule.date <= start_of_month + timedelta(days=days_in_month - 1)
+                ).all()
+            )
+
         except SQLAlchemyError as e:
             logger.error(f"Ошибка при запросе расписания мастера {master_id}: {e}")
             blocked_dates = set()
+            fully_blocked_dates = set()
 
-    for day in range(1, days_in_month + 1):
-        current_date = start_of_month + timedelta(days=day - 1)
-        day_str = current_date.strftime('%d')
+    current_day = 1
+    while current_day <= days_in_month:
+        week = []
 
-        if current_date in blocked_dates:
-            week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data=f"toggle_block_{current_date}"))
-        elif current_date < datetime.now().date():
-            week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data="ignore"))
-        else:
-            week.append(InlineKeyboardButton(text=day_str, callback_data=f"toggle_block_{current_date}"))
+        for i in range(first_weekday):
+            week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
 
-        if len(week) == 7:
-            calendar_buttons.append(week)
-            week = []
+        while current_day <= days_in_month and len(week) < 7:
+            current_date = start_of_month + timedelta(days=current_day - 1)
+            day_str = current_date.strftime('%d')
 
-    if week:
+            if current_date in fully_blocked_dates:
+                week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data=f"toggle_block_{current_date}"))
+            elif current_date in blocked_dates:
+                week.append(InlineKeyboardButton(text=f"{day_str}🟠", callback_data=f"toggle_block_{current_date}"))
+            elif current_date < datetime.now().date():
+                week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data="ignore"))
+            else:
+                week.append(InlineKeyboardButton(text=day_str, callback_data=f"toggle_block_{current_date}"))
+
+            current_day += 1
+
         calendar_buttons.append(week)
 
-    calendar_buttons.append([  # Кнопки перехода между месяцами
+        first_weekday = 0
+
+    calendar_buttons.append([
         InlineKeyboardButton(text="⬅️", callback_data=f"prev_month_{month_offset - 1}"),
         InlineKeyboardButton(text="➡️", callback_data=f"next_month_{month_offset + 1}")
     ])
-    calendar_buttons.append([InlineKeyboardButton(text="Назад", callback_data="windows")])
+    calendar_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="windows")])
 
     return InlineKeyboardMarkup(inline_keyboard=calendar_buttons)
 
-
-# Общая функция для блокировки/разблокировки дня
 async def toggle_day_block(session, master_id, selected_date, block_status):
     """Блокировка или разблокировка всего дня."""
     try:
-        # Преобразуем дату в день недели
-        day_of_week = selected_date.strftime('%A')
+        # Получаем день недели для выбранной даты
+        day_of_week = selected_date.strftime('%A')  # Вычисляем день недели из даты
 
-        # Получаем все записи для этого дня
+        # Получаем все записи для этой даты
         schedules_to_update = session.query(MasterSchedule).filter(
             MasterSchedule.master_id == master_id,
-            MasterSchedule.day_of_week == day_of_week
+            MasterSchedule.date == selected_date
         ).all()
 
         # Обновляем все записи на блокирован/разблокирован
@@ -146,10 +162,11 @@ async def toggle_day_block(session, master_id, selected_date, block_status):
         if user_schedule_entry:
             user_schedule_entry.is_blocked = block_status
         else:
+            # Добавляем новую запись, теперь с правильно вычисленным day_of_week
             new_user_schedule = UserSchedule(
                 user_id=master_id,
                 date=selected_date,
-                day_of_week=day_of_week,
+                day_of_week=day_of_week,  # Добавляем день недели
                 is_blocked=block_status
             )
             session.add(new_user_schedule)
@@ -160,6 +177,8 @@ async def toggle_day_block(session, master_id, selected_date, block_status):
     except Exception as e:
         logger.error(f"Ошибка при обновлении блокировки дня {selected_date}: {e}")
         return False
+
+
 
 
 @router_schedule.callback_query(lambda c: c.data.startswith("toggle_block_"))
@@ -183,7 +202,7 @@ async def toggle_block_date(c: CallbackQuery):
             blocked_slots = set(
                 entry.start_time.strftime('%H:%M') for entry in session.query(MasterSchedule).filter(
                     MasterSchedule.master_id == master_id,
-                    MasterSchedule.day_of_week == selected_date.strftime('%A'),
+                    MasterSchedule.date == selected_date,  # Фильтрация по точной дате
                     MasterSchedule.is_blocked == True
                 ).all()
             )
@@ -216,10 +235,10 @@ async def toggle_block_date(c: CallbackQuery):
 
         if user_schedule_entry and user_schedule_entry.is_blocked:
             # Если день заблокирован, меняем текст кнопки на "Открыть день"
-            time_buttons.append(InlineKeyboardButton(text="Открыть день", callback_data=f"open_day_{selected_date}"))
+            time_buttons.append(InlineKeyboardButton(text="✅ Открыть день", callback_data=f"open_day_{selected_date}"))
         else:
             # Если день не заблокирован, оставляем кнопку "Закрыть день"
-            time_buttons.append(InlineKeyboardButton(text="Закрыть день", callback_data=f"close_day_{selected_date}"))
+            time_buttons.append(InlineKeyboardButton(text="❌ Закрыть день", callback_data=f"close_day_{selected_date}"))
 
         # Формируем разметку для клавиатуры
         markup = InlineKeyboardMarkup(
@@ -237,7 +256,6 @@ async def toggle_block_date(c: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка обработки временных слотов для {selected_date}: {e}")
         await c.message.edit_text("Произошла ошибка. Попробуйте позже.")
-
 
 @router_schedule.callback_query(lambda c: c.data.startswith("open_day_"))
 async def open_day(c: CallbackQuery):
@@ -295,11 +313,9 @@ async def close_day(c: CallbackQuery):
         logger.error(f"Ошибка блокировки дня {selected_date}: {e}")
         await c.message.edit_text("Произошла ошибка. Попробуйте позже.")
 
-
-
 @router_schedule.callback_query(lambda c: c.data.startswith("block_time_") or c.data.startswith("unblock_time_"))
 async def block_hour(c: CallbackQuery):
-    """Блокировка/разблокировка временного слота."""
+    """Блокировка/разблокировка временного слота для конкретной даты."""
     try:
         # Извлекаем данные из callback_data
         data_parts = c.data.split("_")
@@ -308,7 +324,7 @@ async def block_hour(c: CallbackQuery):
             return
 
         date_str, hour_str = data_parts[2], data_parts[3]
-        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()  # Преобразуем строку в дату
         hour = int(hour_str.split(":")[0])  # Извлекаем час
 
         master_id = c.from_user.id
@@ -316,31 +332,35 @@ async def block_hour(c: CallbackQuery):
         # Логирование входных данных
         logger.debug(f"Получена команда для блокировки/разблокировки {selected_date} {hour}:00 от мастера {master_id}")
 
-        # Преобразуем целое число в объект time
+        # Преобразуем час в объект time
         start_time = datetime_time(hour=hour)  # Преобразуем час в объект time
-        end_time = datetime_time(hour=hour + 1)  # Конечный час
 
+        # Рассчитываем day_of_week (1 - понедельник, 7 - воскресенье)
+        day_of_week = selected_date.weekday() + 1
+
+        # Получаем слот по точной дате и времени
         with SessionFactory() as session:
-            # Проверяем текущий статус (заблокирован или нет)
             schedule_entry = session.query(MasterSchedule).filter(
                 MasterSchedule.master_id == master_id,
                 MasterSchedule.start_time == start_time,
-                MasterSchedule.day_of_week == selected_date.strftime('%A')
+                MasterSchedule.date == selected_date,
+                MasterSchedule.day_of_week == day_of_week
             ).first()
 
             if schedule_entry:
                 logger.debug(f"Текущий статус is_blocked: {schedule_entry.is_blocked}")
+                # Переключаем статус с блокировки на разблокировку
                 schedule_entry.is_blocked = not schedule_entry.is_blocked
                 updated_status = "разблокирован" if not schedule_entry.is_blocked else "заблокирован"
                 logger.debug(f"Новый статус is_blocked: {schedule_entry.is_blocked}")
             else:
-                # Если записи нет, создаем новую запись для этого времени
+                # Если записи нет, создаем новую запись для этого времени и дня недели
                 new_schedule = MasterSchedule(
                     master_id=master_id,
-                    day_of_week=selected_date.strftime('%A'),
+                    date=selected_date,  # Сохраняем точную дату
                     start_time=start_time,
-                    end_time=end_time,
-                    is_blocked=True
+                    day_of_week=day_of_week,
+                    is_blocked=True  # По умолчанию ставим слот заблокированным
                 )
                 session.add(new_schedule)
                 updated_status = "заблокирован"
@@ -350,53 +370,17 @@ async def block_hour(c: CallbackQuery):
             session.commit()
             logger.debug("Изменения успешно сохранены в базе данных.")
 
-        # Ответ пользователю
-        await c.answer(f"Час {hour}:00 {updated_status} для мастера.")
+        # Логирование статуса ответа
+        logger.info(f"Час {hour}:00 {updated_status} для мастера {master_id}.")
 
-        # Обновляем клавиатуру, чтобы отобразить новый статус времени
-        time_buttons = []
-        start_hour = 10
-        end_hour = 22
-        time_slots = [datetime_time(hour=h).strftime('%H:%M') for h in range(start_hour, end_hour + 1)]
+        # Обновляем календарь, чтобы отобразить новый статус дня
+        calendar_markup = await generate_schedule_calendar(master_id)
 
-        # Обновляем статусы всех часов
-        with SessionFactory() as session:
-            blocked_slots = set(
-                entry.start_time.strftime('%H:%M') for entry in session.query(MasterSchedule).filter(
-                    MasterSchedule.master_id == master_id,
-                    MasterSchedule.day_of_week == selected_date.strftime('%A'),
-                    MasterSchedule.is_blocked == True
-                ).all()
-            )
-
-        for time_slot in time_slots:
-            # Если час заблокирован, показываем "❌", иначе просто время
-            if time_slot in blocked_slots:
-                time_buttons.append(InlineKeyboardButton(text=f"❌ {time_slot}", callback_data=f"unblock_time_{selected_date}_{time_slot}"))
-            else:
-                time_buttons.append(InlineKeyboardButton(text=f" {time_slot}", callback_data=f"block_time_{selected_date}_{time_slot}"))
-
-        user_schedule_entry = None
-        with SessionFactory() as session:
-            user_schedule_entry = session.query(UserSchedule).filter(
-                UserSchedule.user_id == master_id,
-                UserSchedule.date == selected_date
-            ).first()
-
-        if user_schedule_entry and user_schedule_entry.is_blocked:
-            time_buttons.append(InlineKeyboardButton(text="Открыть день", callback_data=f"open_day_{selected_date}"))
-        else:
-            time_buttons.append(InlineKeyboardButton(text="Закрыть день", callback_data=f"close_day_{selected_date}"))
-
-        # Создание новой разметки клавиатуры
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=[time_buttons[i:i + 3] for i in range(0, len(time_buttons), 3)] +
-                            [[InlineKeyboardButton(text="⬅️ Назад", callback_data="manage_schedule")]]
+        # Отправляем обновлённый календарь
+        await c.message.edit_text(
+            "Выберите дату для блокировки/разблокировки:",
+            reply_markup=calendar_markup
         )
-
-        # Отправляем обновленную клавиатуру
-        await c.message.edit_text(f"Выберите время для {selected_date.strftime('%d.%m.%Y')}:",
-                                  reply_markup=markup)
 
     except Exception as e:
         logger.error(f"Ошибка при изменении статуса времени: {e}")
@@ -424,3 +408,4 @@ async def change_calendar_month(c: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка при смене месяца в календаре для мастера {master_id}: {e}")
         await c.message.edit_text("Произошла ошибка при загрузке календаря. Попробуйте позже.")
+

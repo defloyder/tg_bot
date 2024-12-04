@@ -20,7 +20,7 @@ async def main_menu(user_id):
         buttons = [
             [
                 InlineKeyboardButton(text="ℹ️ О мастерах", callback_data="masters"),
-                InlineKeyboardButton(text="💰 Прайс-лист", callback_data="get_price_list")
+                InlineKeyboardButton(text="💰 Прайс-лист", callback_data="view_price_lists")
             ],
             [InlineKeyboardButton(text="📅 Записаться на приём", callback_data="booking")],
             [InlineKeyboardButton(text="📝 Мои записи", callback_data="my_bookings")]
@@ -48,7 +48,7 @@ async def updated_master_menu(user_id):
                 menu_buttons = [
                     [InlineKeyboardButton(text="🟢 Активные записи", callback_data="active_bookings")],
                     [InlineKeyboardButton(text="📖 История записей", callback_data="booking_history")],
-                    [InlineKeyboardButton(text="📋 Посмотреть прайс-лист", callback_data="get_price_list")],
+                    [InlineKeyboardButton(text="📋 Прайс-лист", callback_data="view_price_lists")],
                     [InlineKeyboardButton(text="🔲 Управление окошками", callback_data="windows")]
                 ]
 
@@ -90,13 +90,22 @@ def my_bookings_menu():
     ])
 
 
+
 def admin_panel():
     """Меню администратора."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Добавить мастера", callback_data="add_master")],
         [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master")],
         [InlineKeyboardButton(text="❌ Удалить мастера", callback_data="delete_master")],
-        [InlineKeyboardButton(text="💼 Редактировать прайс-лист", callback_data="edit_price_list")],
+        [InlineKeyboardButton(text="⚙️ Настройка прайс-листов", callback_data="price_list_settings")],
         [InlineKeyboardButton(text="📜 История всех записей", callback_data="all_booking_history")],
         [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="main_menu")]
+    ])
+
+def price_list_settings_menu():
+    """Меню настройки прайс-листов."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить прайс-лист", callback_data="add_price_list")],
+        [InlineKeyboardButton(text="❌ Удалить прайс-лист", callback_data="delete_price_list")],
+        [InlineKeyboardButton(text="⬅️ Назад в админ-панель", callback_data="admin_panel")]
     ])

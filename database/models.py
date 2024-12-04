@@ -44,6 +44,7 @@ class PriceList(Base):
     __tablename__ = 'price_list'
 
     price_id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)  # Название прайс-листа
     price_description = Column(String(1024), nullable=True)
     price_photo = Column(String(255), nullable=True)
 
@@ -63,13 +64,13 @@ class MasterSchedule(Base):
 
     schedule_id = Column(Integer, primary_key=True)
     master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)
-    day_of_week = Column(String, nullable=False)
+    day_of_week = Column(Integer, nullable=False)
+    date = Column(Date, nullable=True)
     start_time = Column(Time, nullable=False)
-    end_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=True)  # Добавляем поле для времени окончания
     is_blocked = Column(Boolean, default=False)
 
     master = relationship("Master", back_populates="schedules")
-
 
 Master.schedules = relationship("MasterSchedule", back_populates="master")
 
@@ -84,3 +85,4 @@ class UserSchedule(Base):
     is_blocked = Column(Boolean, default=False)
 
     user = relationship("User", backref="user_schedule")
+

@@ -22,7 +22,7 @@ from database import Booking, Master
 from database.database import SessionFactory
 from database.models import PriceList, User
 from logger_config import logger
-from menu import admin_panel, main_menu
+from menu import admin_panel, main_menu, price_list_settings_menu
 
 router_admin = Router(name="admin")
 
@@ -391,141 +391,13 @@ async def cancel_booking(callback_query: CallbackQuery):
         )
 
 
-@router_admin.callback_query(lambda c: c.data == "edit_price_list")
-async def edit_price_list_start(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.answer()
-    await callback_query.message.edit_text("📝 Введите описание для прайс-листа:")
-    await state.set_state(PriceListState.waiting_for_description)
-
-
-@router_admin.message(PriceListState.waiting_for_description)
-async def process_price_list_description(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("❗ Пожалуйста, отправьте текстовое описание для прайс-листа.")
-        return
-
-    await state.update_data(description=message.text)
-    await message.answer("📸 Теперь отправьте фотографию для прайс-листа:")
-    await state.set_state(PriceListState.waiting_for_photo)
-
-
-@router_admin.message(PriceListState.waiting_for_photo)
-async def process_price_list_photo(message: Message, state: FSMContext):
-    data = await state.get_data()
-    description = data.get("description")
-
-    if not message.photo:
-        await message.answer("❗ Пожалуйста, отправьте фотографию для прайс-листа.")
-        return
-
-    photo = message.photo[-1]
-    file_id = photo.file_id
-
-    try:
-        file = await message.bot.get_file(file_id)
-        os.makedirs("photos", exist_ok=True)
-        extension = file.file_path.split('.')[-1]
-        price_photo = f"photos/price_list_{file.file_id}.{extension}"
-        await message.bot.download_file(file.file_path, destination=price_photo)
-
-        with SessionFactory() as session:
-            price_list = session.query(PriceList).first()
-            if price_list:
-                price_list.price_description = description
-                price_list.price_photo = price_photo
-            else:
-                price_list = PriceList(price_description=description, price_photo=price_photo)
-                session.add(price_list)
-            session.commit()
-
-        if price_message_id:
-            await message.bot.edit_message_media(
-                media=types.InputMediaPhoto(price_photo, caption=description),
-                chat_id=message.chat.id,
-                message_id=price_message_id
-            )
-            await message.answer("✅ Прайс-лист успешно обновлён!")
-        else:
-            await message.answer("✅ Прайс-лист успешно обновлён, но ещё не был отображен.")
-
-    except Exception as e:
-        logger.error(f"❌ Ошибка при обновлении прайс-листа: {e}")
-        await message.answer("⚠️ Произошла ошибка при обновлении прайс-листа.")
-    finally:
-        await state.clear()
-
-
-@router_admin.callback_query(lambda c: c.data == "get_price_list")
-async def show_price_list(callback_query: CallbackQuery, state: FSMContext):
-    global price_message_id
-    try:
-        if price_message_id:
-            await callback_query.answer()
-
-        with SessionFactory() as session:
-            price_list = session.query(PriceList).first()
-
-        if price_list:
-            description = price_list.price_description
-            price_photo = price_list.price_photo
-            logger.debug(f"Прайс-лист найден. Описание: {description}, Фото: {price_photo}")
-
-            back_button = InlineKeyboardButton(text=f"⬅️ Назад", callback_data="main_menu")
-            buttons = [[back_button]]
-            markup = InlineKeyboardMarkup(inline_keyboard=buttons)
-
-            if os.path.exists(price_photo):
-                input_file = FSInputFile(price_photo, filename=os.path.basename(price_photo))
-
-                if price_message_id:
-                    await callback_query.message.bot.edit_message_media(
-                        media=types.InputMediaPhoto(input_file, caption=f"📋 Прайс-лист: {description}"),
-                        chat_id=callback_query.message.chat.id,
-                        message_id=price_message_id,
-                        reply_markup=markup
-                    )
-                else:
-                    price_message = await callback_query.message.bot.send_photo(
-                        callback_query.message.chat.id,
-                        input_file,
-                        caption=f"📋: {description}",
-                        reply_markup=markup
-                    )
-                    price_message_id = price_message.message_id
-            else:
-                if price_message_id:
-                    await callback_query.message.bot.edit_message_text(
-                        text=f"📋: {description}",
-                        chat_id=callback_query.message.chat.id,
-                        message_id=price_message_id,
-                        reply_markup=markup
-                    )
-                else:
-                    await callback_query.message.bot.send_message(
-                        callback_query.message.chat.id,
-                        text=f"📋 Прайс-лист: {description}",
-                        reply_markup=markup
-                    )
-        else:
-            await callback_query.message.edit_text(
-                "⚠️ Прайс-лист не найден.",
-                reply_markup=admin_panel()
-            )
-
-    except Exception as e:
-        logger.error(f"Ошибка при получении прайс-листа: {e}")
-        await callback_query.message.edit_text(
-            "⚠️ Произошла ошибка при загрузке прайс-листа. Попробуйте позже.",
-            reply_markup=admin_panel()
-        )
-
-@router_admin.message(lambda message: isinstance(message.text, str) and message.text.lower() == 'get_price_list')
-async def callback_get_price_list(callback_query: CallbackQuery, state: FSMContext):
-    # Проверка текущего состояния FSM
-    current_state = await state.get_state()
-    logger.debug(f"Current FSM state: {current_state}")
-    await show_price_list(callback_query.message)
-
+@router_admin.callback_query(lambda c: c.data == "price_list_settings")
+async def handle_price_list_settings(callback_query: CallbackQuery):
+    """Обработчик кнопки '⚙️ Настройка прайс-листов'."""
+    await callback_query.message.edit_text(
+        "Выберите действие с прайс-листом:",
+        reply_markup=price_list_settings_menu()
+    )
 
 @router_admin.callback_query(lambda c: c.data.startswith("calendar_"))
 async def handle_calendar_navigation(callback_query: CallbackQuery):
