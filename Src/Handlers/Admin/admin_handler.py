@@ -1,26 +1,21 @@
-import os
+from datetime import datetime
 from datetime import datetime
 from tempfile import NamedTemporaryFile
-from typing import Union
 
 import aiogram
 import pandas as pd
 from aiogram import Router
-from aiogram import types
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import FSInputFile
-from aiogram.types import Message
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
-from sqlalchemy import Date
 from sqlalchemy.exc import SQLAlchemyError
 
 from Src.Handlers.Booking.service import generate_calendar
 from database import Booking, Master
 from database.database import SessionFactory
-from database.models import PriceList, User
+from database.models import User
 from logger_config import logger
 from menu import admin_panel, main_menu, price_list_settings_menu
 
@@ -35,6 +30,7 @@ class PriceListState(StatesGroup):
 
 
 price_message_id = None
+
 
 @router_admin.callback_query(lambda c: c.data == "admin_panel")
 async def process_callback_admin_panel(callback_query: CallbackQuery):
@@ -188,6 +184,7 @@ async def delete_all_bookings(callback_query: CallbackQuery):
             reply_markup=admin_panel()
         )
 
+
 @router_admin.callback_query(lambda c: c.data == "export_bookings_to_excel")
 async def export_bookings_to_excel(callback_query: CallbackQuery):
     try:
@@ -249,6 +246,7 @@ async def export_bookings_to_excel(callback_query: CallbackQuery):
             "⚠️ Произошла ошибка при экспорте записей. Попробуйте позже.",
             reply_markup=admin_panel()
         )
+
 
 @router_admin.callback_query(lambda c: c.data.startswith("view_booking_"))
 async def view_booking_details(callback_query: CallbackQuery):
@@ -337,6 +335,7 @@ async def view_booking_details(callback_query: CallbackQuery):
             reply_markup=admin_panel()
         )
 
+
 @router_admin.callback_query(lambda c: c.data.startswith("cancel_booking_"))
 async def cancel_booking(callback_query: CallbackQuery):
     booking_id = int(callback_query.data.split("_")[-1])
@@ -398,6 +397,7 @@ async def handle_price_list_settings(callback_query: CallbackQuery):
         "Выберите действие с прайс-листом:",
         reply_markup=price_list_settings_menu()
     )
+
 
 @router_admin.callback_query(lambda c: c.data.startswith("calendar_"))
 async def handle_calendar_navigation(callback_query: CallbackQuery):

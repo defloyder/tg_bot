@@ -94,12 +94,19 @@ def my_bookings_menu():
 def admin_panel():
     """Меню администратора."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Добавить мастера", callback_data="add_master")],
-        [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master")],
-        [InlineKeyboardButton(text="❌ Удалить мастера", callback_data="delete_master")],
+        [InlineKeyboardButton(text="👸 Настройка мастеров", callback_data="open_settings")],  # Новая кнопка
         [InlineKeyboardButton(text="⚙️ Настройка прайс-листов", callback_data="price_list_settings")],
         [InlineKeyboardButton(text="📜 История всех записей", callback_data="all_booking_history")],
         [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="main_menu")]
+    ])
+
+def open_settings_menu():
+    """Меню настройки мастеров."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить мастера", callback_data="add_master")],
+        [InlineKeyboardButton(text="✏️ Редактировать мастера", callback_data="edit_master")],
+        [InlineKeyboardButton(text="❌ Удалить мастера", callback_data="delete_master")],
+        [InlineKeyboardButton(text="⬅️ Назад в админ-панель", callback_data="admin_panel")]
     ])
 
 def price_list_settings_menu():

@@ -1,5 +1,4 @@
 from aiogram import Router
-from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery
@@ -11,7 +10,7 @@ from database import Master, Booking
 from database.database import SessionFactory
 from database.models import MasterSchedule, UserSchedule
 from logger_config import logger
-from menu import ADMIN_ID, main_menu
+from menu import ADMIN_ID, main_menu, open_settings_menu
 
 router_master = Router(name="masters")
 
@@ -29,6 +28,14 @@ class EditMasterStates(StatesGroup):
     waiting_for_description = State()
     waiting_for_photo = State()
     confirmation = State()
+
+
+@router_master.callback_query(lambda c: c.data == "open_settings")
+async def open_master_settings(callback_query: CallbackQuery):
+    """Обработчик кнопки '👸 Настройка мастеров'."""
+    logger.debug("Обработчик 'open_settings' сработал.")
+    await callback_query.answer()
+    await callback_query.message.edit_text("Настройки мастеров:", reply_markup=open_settings_menu())
 
 
 @router_master.callback_query(lambda c: c.data == "add_master")
@@ -309,7 +316,8 @@ async def delete_master(callback_query: CallbackQuery, state: FSMContext):
                 master_name = master.master_name if master.master_name else "Без имени"
                 # Добавляем кнопку для каждого мастера
                 keyboard.inline_keyboard.append(
-                    [InlineKeyboardButton(text=master_name, callback_data=f"confirm_delete_{master.master_id}")])
+                    [InlineKeyboardButton(text=master_name, callback_data=f"confirm_delete_master_{master.master_id}")]
+                )
 
             keyboard.inline_keyboard.append([InlineKeyboardButton(text="Назад", callback_data="main_menu")])
             await callback_query.message.edit_text("Выберите мастера для удаления:", reply_markup=keyboard)
@@ -317,11 +325,11 @@ async def delete_master(callback_query: CallbackQuery, state: FSMContext):
         await callback_query.answer("У вас нет доступа к этой функции.", show_alert=True)
 
 
-@router_master.callback_query(lambda c: c.data.startswith("confirm_delete_"))
+@router_master.callback_query(lambda c: c.data.startswith("confirm_delete_master_"))
 async def confirm_master_deletion(callback_query: CallbackQuery, state: FSMContext):
     if callback_query.from_user.id in ADMIN_ID:
         try:
-            master_id = int(callback_query.data.split("_")[2])
+            master_id = int(callback_query.data.split("_")[-1])  # Извлекаем master_id
         except (IndexError, ValueError) as e:
             logger.error(f"Ошибка при извлечении master_id из callback {callback_query.data}: {e}")
             await callback_query.answer("Ошибка при обработке запроса. Попробуйте снова.", show_alert=True)
