@@ -11,7 +11,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from database.database import SessionFactory
 from database.models import PriceList
 
-# Логирование
 logger = logging.getLogger(__name__)
 
 
@@ -108,16 +107,12 @@ async def view_price_lists(callback_query: CallbackQuery):
             markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
             try:
-                # Удаление старого сообщения
                 await callback_query.message.delete()
             except Exception as e:
-                # Если не удалось удалить сообщение, логируем ошибку
                 logger.error(f"Ошибка при удалении старого сообщения: {e}")
 
-            # Отправляем новое сообщение с меню
             await callback_query.message.answer("Выберите прайс-лист для просмотра:", reply_markup=markup)
         else:
-            # Если прайс-листы не найдены, удаляем старое сообщение и показываем уведомление
             try:
                 await callback_query.message.delete()
             except Exception as e:
@@ -127,7 +122,6 @@ async def view_price_lists(callback_query: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка при получении прайс-листов: {e}")
         try:
-            # Удаляем старое сообщение и показываем ошибку
             await callback_query.message.delete()
         except Exception as e:
             logger.error(f"Ошибка при удалении старого сообщения: {e}")

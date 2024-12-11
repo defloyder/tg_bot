@@ -31,7 +31,7 @@ class Booking(Base):
     booking_id = Column(Integer, primary_key=True)
     booking_datetime = Column(DateTime)
     status = Column(String, default="new")
-    reminder_job_id = Column(Integer, nullable=True)  # Новая колонка
+    payment_id = Column(String, nullable=True)
 
     user_id = Column(BigInteger, ForeignKey('user.user_id'), nullable=False)
     master_id = Column(String(36), ForeignKey('master.master_id'), nullable=False)
@@ -44,7 +44,7 @@ class PriceList(Base):
     __tablename__ = 'price_list'
 
     price_id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)  # Название прайс-листа
+    name = Column(String(255), nullable=False)
     price_description = Column(String(1024), nullable=True)
     price_photo = Column(String(255), nullable=True)
 

@@ -48,7 +48,6 @@ async def process_callback_admin_panel(callback_query: CallbackQuery):
 async def main_menu_handler(callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
 
-    # Удаляем сообщение с прайсом, если оно существует
     global price_message_id
     if price_message_id:
         try:
@@ -56,19 +55,16 @@ async def main_menu_handler(callback_query: CallbackQuery):
                 chat_id=callback_query.message.chat.id,
                 message_id=price_message_id
             )
-            price_message_id = None  # Сбрасываем id сообщения после удаления
+            price_message_id = None
         except aiogram.exceptions.TelegramBadRequest as e:
             logger.error(f"Ошибка при удалении сообщения с прайсом: {e}")
         except Exception as e:
             logger.error(f"Не удалось удалить сообщение с прайсом: {e}")
 
-    # Проверяем, существует ли сообщение, перед тем как редактировать
     if callback_query.message:
         try:
-            # Получаем меню для пользователя
             reply_markup = await main_menu(user_id)
 
-            # Редактируем сообщение с новым текстом и клавиатурой
             await callback_query.message.edit_text(
                 "🏠 Вы в главном меню. Выберите нужную опцию.",
                 reply_markup=reply_markup
@@ -205,9 +201,9 @@ async def export_bookings_to_excel(callback_query: CallbackQuery):
                 {
                     "ID записи": booking.booking_id,
                     "Дата и время": booking.booking_datetime.strftime('%d.%m.%Y %H:%M'),
-                    "ID пользователя": int(booking.user_id),  # Преобразование в числовой формат
+                    "ID пользователя": int(booking.user_id),
                     "Имя мастера": booking.master_name,
-                    "Статус": booking.status or "Не указано"  # Обработка пустых статусов
+                    "Статус": booking.status or "Не указано"
                 }
                 for booking in all_bookings
             ]
@@ -226,12 +222,12 @@ async def export_bookings_to_excel(callback_query: CallbackQuery):
 
             for column_cells in ws.columns:
                 max_length = 0
-                col_letter = column_cells[0].column_letter  # Определяем букву колонки
+                col_letter = column_cells[0].column_letter
                 for cell in column_cells:
                     if cell.value:
-                        cell.alignment = Alignment(wrap_text=True)  # Включаем перенос текста
+                        cell.alignment = Alignment(wrap_text=True)
                         max_length = max(max_length, len(str(cell.value)))
-                ws.column_dimensions[col_letter].width = max_length + 2  # Увеличиваем ширину
+                ws.column_dimensions[col_letter].width = max_length + 2
 
             wb.save(file_path)
             wb.close()
@@ -255,7 +251,6 @@ async def view_booking_details(callback_query: CallbackQuery):
 
     try:
         with SessionFactory() as session:
-            # Получаем запись по ID
             booking = session.query(
                 Booking.booking_id,
                 Booking.booking_datetime,
@@ -273,7 +268,6 @@ async def view_booking_details(callback_query: CallbackQuery):
                 )
                 return
 
-            # Определяем статус записи
             status = (
                 "⛔ Отменена" if booking.status == "cancelled" else
                 "🟠 Прошедшая" if booking.booking_datetime < datetime.now() else
@@ -286,15 +280,14 @@ async def view_booking_details(callback_query: CallbackQuery):
                 f"⚜️ Мастер: {booking.master_name}\n"
             )
 
-            # Получаем имя пользователя, связанного с записью
             if booking.user_id:
                 user = session.query(User).filter(User.user_id == booking.user_id).first()
                 if user:
-                    if user.username:  # Если есть username
+                    if user.username:
                         user_display_name = f"@{user.username}"
-                    elif user.full_name:  # Если есть полное имя
+                    elif user.full_name:
                         user_display_name = user.full_name
-                    else:  # Если ни username, ни имени нет
+                    else:
                         user_display_name = "Неизвестный пользователь"
                 else:
                     user_display_name = "Неизвестный пользователь"
@@ -309,7 +302,6 @@ async def view_booking_details(callback_query: CallbackQuery):
 
             logger.info(f"Детали записи: {details}")
 
-            # Определяем, какие кнопки показывать в зависимости от статуса
             buttons = []
             if status == "🟢 Активная" and booking.booking_datetime > datetime.now():
                 cancel_button = InlineKeyboardButton(
@@ -358,7 +350,6 @@ async def cancel_booking(callback_query: CallbackQuery):
                 await callback_query.answer("⚠️ Запись уже отменена.", show_alert=True)
                 return
 
-            # Обновляем статус записи
             session.execute(
                 Booking.__table__.update().where(Booking.booking_id == booking_id).values(status="cancelled")
             )

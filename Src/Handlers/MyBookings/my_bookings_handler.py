@@ -67,7 +67,7 @@ async def process_active_bookings(callback_query: CallbackQuery):
                 else:
                     master = session.query(Master).filter(Master.master_id == booking.master_id).first()
                     master_name = master.master_name if master else "<i>Неизвестно</i>"
-                    label = f"✂ Мастер: {master_name}"
+                    label = f"⚜️ Мастер: {master_name}"
 
                 buttons.append([
                     InlineKeyboardButton(
@@ -137,7 +137,7 @@ async def process_user_history(callback_query: CallbackQuery):
                 else:
                     master = session.query(Master).filter(Master.master_id == booking.master_id).first()
                     master_name = master.master_name if master else "<i>Неизвестно</i>"
-                    label = f"✂ Мастер: {master_name}"
+                    label = f"⚜️ Мастер: {master_name}"
 
                 status = "❌ Отменена" if booking.status == "cancelled" else "✅ Прошедшая"
 
@@ -210,7 +210,9 @@ async def process_view_active_booking(callback_query: CallbackQuery):
                 details = (
                     f"<b>📅 Дата:</b> {booking_date}\n"
                     f"<b>⏰ Время:</b> {booking_time}\n"
-                    f"<b>✂ Мастер:</b> {master_name}\n"
+                    f"<b>⚜️ Мастер:</b> {master_name}\n"
+                    f"⛩️<b> Адрес:</b> г. Москва, метро Владыкино, ул. Ботаническая 14а\n"
+
                 )
 
             buttons = [

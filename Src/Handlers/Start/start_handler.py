@@ -1,21 +1,17 @@
 import logging
-
 from aiogram import Router, types
 from aiogram.filters import CommandStart
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
 from database.database import SessionFactory
 from database.repository import create_user
 from menu import main_menu
 
 router_start = Router(name="start")
 
-# Кнопка "Начать" для клавиатуры
 start_keyboard = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text="🏚️ Главное меню")]],
     resize_keyboard=True
 )
-
 
 @router_start.message(CommandStart())
 async def cmd_start(message: types.Message):
@@ -37,11 +33,9 @@ async def cmd_start(message: types.Message):
         logging.error(f"Ошибка при обработке команды /start: {e}")
         await message.answer("Произошла ошибка, попробуйте позже.")
 
-
 @router_start.message(lambda message: message.text == "🏚️ Главное меню")
 async def start_button_pressed(message: types.Message):
     user_id = message.from_user.id
-    username = message.from_user.username
 
     try:
         with SessionFactory() as session:

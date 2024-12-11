@@ -26,7 +26,6 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
 
     try:
         with SessionFactory() as session:
-            # Собираем блокированные дни для мастера
             blocked_dates = set(
                 schedule.date for schedule in session.query(UserSchedule).filter(
                     UserSchedule.user_id == master_id,
@@ -41,25 +40,22 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
     days_in_month = calendar.monthrange(year, month)[1]
 
     week = []
-    first_day_weekday = datetime(year, month, 1).weekday()  # День недели для первого числа месяца
+    first_day_weekday = datetime(year, month, 1).weekday()
 
     for _ in range(first_day_weekday):
         week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
 
-    # Создаем календарь для каждого дня месяца
     for day in range(1, days_in_month + 1):
         try:
             date = datetime(year, month, day)
             date_str = date.strftime("%d")
             callback_data = f'date_{master_id}_{date.strftime("%Y-%m-%d")}'
 
-            # Проверка, заблокирован ли день для этого дня
             if date.date() <= current_date or date.date() in blocked_dates:
                 week.append(InlineKeyboardButton(text=f"{date_str}❌", callback_data="ignore"))
             else:
                 week.append(InlineKeyboardButton(text=date_str, callback_data=callback_data))
 
-            # Если в ряду 7 кнопок, добавляем их в календарь
             if len(week) == 7:
                 calendar_buttons.row(*week)
                 week = []
@@ -68,11 +64,9 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
             logger.warning(f"Ошибка при обработке дня {day}. Возможно, этого дня нет в месяце.")
             break
 
-    # Добавляем оставшиеся дни в календарь
     if week:
         calendar_buttons.row(*week)
 
-    # Кнопки для перехода между месяцами
     navigation_buttons = []
     if month == now.month and year == now.year:
         next_month = (month % 12) + 1
@@ -91,5 +85,5 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
     if navigation_buttons:
         calendar_buttons.row(*navigation_buttons)
 
-    calendar_buttons.row(InlineKeyboardButton(text="Назад", callback_data="booking"))
+    calendar_buttons.row(InlineKeyboardButton(text="⬅ Назад", callback_data="booking"))
     return calendar_buttons.as_markup()
