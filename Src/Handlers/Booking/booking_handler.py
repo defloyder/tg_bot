@@ -83,7 +83,7 @@ async def process_callback_booking(callback_query: CallbackQuery):
             ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="main_menu")]]
         )
 
-        await callback_query.message.edit_text("👨‍🔧 *Выберите мастера для записи:*", reply_markup=master_menu)
+        await callback_query.message.edit_text("👨‍🔧 Выберите мастера для записи:", reply_markup=master_menu)
         logger.debug("Отправлено динамическое меню с выбором мастеров.")
 
     except SQLAlchemyError as e:
@@ -117,7 +117,7 @@ async def process_callback_master(callback_query: CallbackQuery):
             )
             return
 
-        await callback_query.message.edit_text("📅 *Выберите дату для записи:*", reply_markup=calendar_markup)
+        await callback_query.message.edit_text("📅 Выберите дату для записи:", reply_markup=calendar_markup)
         logger.debug(f"Календарь для мастера {master_id} успешно отправлен.")
 
     except Exception as e:
@@ -184,7 +184,7 @@ async def process_callback_date(callback_query: CallbackQuery):
             time_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data=f"master_{master_id}")])
 
             await callback_query.message.edit_text(
-                "⏰ *Выберите доступное время:*",
+                "⏰ Выберите доступное время:",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=time_buttons)
             )
             logger.debug(f"Доступные временные слоты отправлены пользователю.")
@@ -267,14 +267,14 @@ async def process_callback_time(callback_query: CallbackQuery):
                 InlineKeyboardButton(text="30 минут", callback_data=f"minute_{master_id}_{date}_{hour}_{minute}_30"),
                 InlineKeyboardButton(text="45 минут", callback_data=f"minute_{master_id}_{date}_{hour}_{minute}_45"),
             ],
-            [InlineKeyboardButton(text="Назад", callback_data=f"date_{master_id}_{date}")]
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"date_{master_id}_{date}")]
         ]
     )
 
     logger.info(f"Отправлены кнопки выбора минут пользователю {user_id}. Выбранное время: {selected_time}.")
 
     await callback_query.message.edit_text(
-        f"Вы выбрали {selected_time}. Теперь выберите минуты:",
+        f"Вы выбрали <b>{selected_time}</b>. Давайте теперь уточним более точное время😽😻:",
         reply_markup=minute_buttons
     )
 
@@ -318,10 +318,10 @@ async def process_callback_minute(callback_query: CallbackQuery):
                 if time_diff.days < 7:
                     booking_datetime = active_booking.booking_datetime.strftime('%d.%m.%Y %H:%M')
                     await callback_query.message.edit_text(
-                        f"У вас уже есть активная запись на {booking_datetime}. "
+                        f"У вас уже есть активная запись на <b>{booking_datetime}</b>. "
                         f"Вы сможете записаться снова через {7 - time_diff.days} дней.",
                         reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[[InlineKeyboardButton(text="Главное меню", callback_data="main_menu")]]
+                            inline_keyboard=[[InlineKeyboardButton(text="🏚️ Главное меню", callback_data="main_menu")]]
                         )
                     )
                     logger.info(f"Пользователь {user_id} пытался записаться ранее, чем через 7 дней.")
@@ -342,7 +342,7 @@ async def process_callback_minute(callback_query: CallbackQuery):
     logger.info(f"Отправлены кнопки подтверждения записи пользователю {user_id}. Время: {final_time_str}.")
 
     await callback_query.message.edit_text(
-        f"Вы выбрали {date} {final_time_str}. Для подтверждения записи просим внести предоплату!💖🦄",
+        f"Запись будет создана на  <b>{date}</b> <b>{final_time_str}</b>.💫 Для подтверждения записи просим внести предоплату!💖🦄",
         reply_markup=confirm_buttons
     )
 
@@ -354,7 +354,7 @@ async def process_confirm_time(callback_query: CallbackQuery):
 
     if await is_flood(user_id, MAX_CLICKS, TIME_WINDOW):
         logger.warning(f"Флуд-атака от пользователя {user_id}: превышено количество нажатий.")
-        await callback_query.answer("❌ Подождите немного перед следующим действием! Превышено количество нажатий.",
+        await callback_query.answer("❌ Не спешите, немного подождите и попробуйте еще раз нажать на нужную кнопку😽",
                                     show_alert=True)
         return
 
@@ -465,7 +465,6 @@ async def process_payment_confirmation(callback_query: CallbackQuery):
 
         if payment_status == 'succeeded':
             with SessionFactory() as session:
-                # Извлекаем master_id и booking_datetime из платежа или контекста
                 master_id = session.query(Booking.master_id).filter_by(payment_id=payment_id).scalar()
                 booking_datetime = session.query(Booking.booking_datetime).filter_by(payment_id=payment_id).scalar()
 
@@ -474,7 +473,6 @@ async def process_payment_confirmation(callback_query: CallbackQuery):
                     await callback_query.message.edit_text("❌ Произошла ошибка. Пожалуйста, обратитесь в поддержку.")
                     return
 
-                # Создаем новую запись
                 new_booking = Booking(
                     booking_datetime=booking_datetime,
                     status="new",
@@ -500,7 +498,7 @@ async def process_payment_confirmation(callback_query: CallbackQuery):
                 )
         else:
             logger.warning(f"Платеж с payment_id {payment_id} не подтвержден.")
-            confirmation_url = payment.confirmation.confirmation_url  # Используем правильную ссылку для оплаты
+            confirmation_url = payment.confirmation.confirmation_url
             await callback_query.message.edit_text(
                 f"Для подтверждения записи просьба внести предоплату через ЮКассу🦄💖\n\n"
                 f"[Ссылка для оплаты⚜️]({confirmation_url})\n\n"

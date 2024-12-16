@@ -48,8 +48,8 @@ async def updated_master_menu(user_id):
                 menu_buttons = [
                     [InlineKeyboardButton(text="🟢 Активные записи", callback_data="active_bookings")],
                     [InlineKeyboardButton(text="📖 История записей", callback_data="booking_history")],
-                    [InlineKeyboardButton(text="📋 Прайс-лист", callback_data="view_price_lists")],
-                    [InlineKeyboardButton(text="🔲 Управление окошками", callback_data="windows")]
+                    [InlineKeyboardButton(text="📋 Прайс-лист", callback_data="view_price_lists")]
+                    # [InlineKeyboardButton(text="🔲 Управление окошками", callback_data="windows")]
                 ]
 
                 if user_id in ADMIN_ID:
@@ -97,6 +97,7 @@ def admin_panel():
         [InlineKeyboardButton(text="👸 Настройка мастеров", callback_data="open_settings")],  # Новая кнопка
         [InlineKeyboardButton(text="⚙️ Настройка прайс-листов", callback_data="price_list_settings")],
         [InlineKeyboardButton(text="📜 История всех записей", callback_data="all_booking_history")],
+        [InlineKeyboardButton(text="📅 Настройка окошек", callback_data="open_master_schedule_settings")],  # Добавленная кнопка
         [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="main_menu")]
     ])
 

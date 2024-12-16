@@ -19,6 +19,7 @@ async def on_startup():
     logger.debug("Bot session started")
 
 
+
 async def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)

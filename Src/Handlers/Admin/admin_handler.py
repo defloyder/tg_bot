@@ -1,21 +1,23 @@
-from datetime import datetime
-from datetime import datetime
+import calendar
 from tempfile import NamedTemporaryFile
+from datetime import datetime, time as datetime_time, timedelta
 
 import aiogram
 import pandas as pd
 from aiogram import Router
+from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import FSInputFile
+from dateutil.relativedelta import relativedelta
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from sqlalchemy.exc import SQLAlchemyError
 
-from Src.Handlers.Booking.service import generate_calendar
+from Src.Handlers.Schedule.master_schedule_handler import toggle_day_block
 from database import Booking, Master
 from database.database import SessionFactory
-from database.models import User
+from database.models import User, MasterSchedule, UserSchedule
 from logger_config import logger
 from menu import admin_panel, main_menu, price_list_settings_menu
 
@@ -390,18 +392,544 @@ async def handle_price_list_settings(callback_query: CallbackQuery):
     )
 
 
-@router_admin.callback_query(lambda c: c.data.startswith("calendar_"))
-async def handle_calendar_navigation(callback_query: CallbackQuery):
+@router_admin.callback_query(lambda c: c.data == "open_master_schedule_settings")
+async def open_master_schedule_settings(callback_query: CallbackQuery):
     """
-    Обработчик навигации по календарю.
+    Открывает меню выбора мастера для настройки расписания.
     """
-    try:
-        _, master_id, year, month = callback_query.data.split("_")
-        year, month = int(year), int(month)
+    user_id = callback_query.from_user.id
+    logger.info(f"Пользователь {user_id} открыл меню настройки мастеров.")
 
-        markup = await generate_calendar(master_id, year, month)
-        await callback_query.message.edit_reply_markup(reply_markup=markup)
+    # Проверка на админа
+    if user_id not in ADMIN_ID:
+        logger.warning(f"Пользователь {user_id} попытался получить доступ к настройкам мастеров без прав.")
+        await callback_query.answer("🚫 У вас нет прав для доступа к этому меню.", show_alert=True)
+        return
+
+    try:
+        # Получаем всех мастеров из базы данных
+        with SessionFactory() as session:
+            masters = session.query(Master).all()
+        logger.info(f"Мастера загружены: {[master.master_id for master in masters]}")
+
+        # Если мастера не найдены, сообщаем об этом
+        if not masters:
+            logger.info("Мастера не найдены.")
+            await callback_query.message.edit_text("⚠️ Мастера не найдены.")
+            return
+
+        # Создаем клавиатуру для выбора мастера
+        master_menu = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=f"👨‍🔧 {master.master_name}",
+                                                   callback_data=f"edit_calendar_{master.master_id}")] for master in masters] +
+                            [[InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_panel")]]
+        )
+
+        # Отправляем сообщение с клавиатурой
+        await callback_query.message.edit_text("Выберите мастера для настройки расписания:", reply_markup=master_menu)
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке мастеров: {e}")
+        await callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("edit_calendar_"))
+async def edit_master_calendar(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Отображает календарь выбранного мастера для редактирования.
+    """
+    user_id = callback_query.from_user.id
+    logger.info(f"Пользователь {user_id} открывает меню настройки расписания мастера.")
+
+    if user_id not in ADMIN_ID:  # Проверяем, является ли пользователь админом
+        logger.warning(f"Пользователь {user_id} попытался получить доступ к настройкам мастера без прав.")
+        await callback_query.answer("🚫 У вас нет прав для доступа к этому меню.", show_alert=True)
+        return
+
+    try:
+        master_id = int(callback_query.data.split("_")[2])  # Извлекаем ID мастера
+        logger.info(f"Пользователь {user_id} выбрал мастера с ID {master_id}.")
+
+        # Сохраняем master_id в состояние
+        await state.update_data(master_id=master_id)
+        logger.debug(f"master_id={master_id} сохранен в состоянии для пользователя {user_id}.")
+
+        # Генерация календаря для выбранного мастера
+        calendar_markup = await generate_schedule_calendar(master_id)
+        if not calendar_markup:
+            logger.error(f"Не удалось загрузить календарь для мастера {master_id}.")
+            await callback_query.message.edit_text("Не удалось загрузить календарь.", reply_markup=None)
+            return
+
+        # Отправляем календарь
+        await callback_query.message.edit_text(
+            "Настройте расписание мастера:",
+            reply_markup=calendar_markup
+        )
+        logger.info(f"Календарь мастера {master_id} успешно открыт администратором {user_id}.")
+    except Exception as e:
+        logger.error(f"Ошибка при открытии календаря мастера: {e}")
+        await callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("toggle_block_"))
+async def toggle_block(callback_query: CallbackQuery):
+    """Обработчик для отображения временных слотов для выбранного дня."""
+    try:
+        user_id = callback_query.from_user.id
+        logger.debug(f"ID пользователя, отправившего запрос: {user_id}")
+
+        # Разбор callback_data
+        data_parts = callback_query.data.split("_")
+        logger.debug(f"Разобранные данные callback_query.data: {data_parts}")
+
+        if len(data_parts) != 4:
+            logger.error(f"Неверный формат callback_data: {callback_query.data}")
+            await callback_query.answer("Ошибка: Неверный формат данных.")
+            return
+
+        _, master_id_str, date_str = data_parts[1], data_parts[2], data_parts[3]
+
+        # Проверяем, что master_id — это число
+        if not master_id_str.isdigit():
+            logger.error(f"Некорректный master_id: {master_id_str}")
+            await callback_query.answer("Ошибка: Некорректный идентификатор мастера.")
+            return
+
+        master_id = int(master_id_str)
+
+        # Преобразуем строку с датой в объект datetime.date
+        try:
+            selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            logger.debug(f"Дата после преобразования: {selected_date}")
+        except ValueError:
+            logger.error(f"Некорректный формат даты: {date_str}")
+            await callback_query.answer("Ошибка: Некорректный формат даты.")
+            return
+
+        logger.debug(f"Отображаем временные слоты для даты {selected_date} (мастер: {master_id})")
+
+        # Переходим к отображению временных слотов
+        await toggle_block_date(callback_query, master_id, selected_date)
 
     except Exception as e:
-        logger.error(f"Ошибка обработки навигации по календарю: {e}")
-        await callback_query.answer("Ошибка при обновлении календаря.", show_alert=True)
+        logger.error(f"Ошибка при обработке callback_data {callback_query.data}: {e}")
+        await callback_query.message.edit_text("Произошла ошибка. Попробуйте снова.")
+
+
+async def toggle_day_block(session, master_id, selected_date, block_status):
+    """Блокировка или разблокировка всего дня."""
+    try:
+        # Получаем записи для указанного мастера и даты
+        schedules_to_update = session.query(MasterSchedule).filter(
+            MasterSchedule.master_id == master_id,
+            MasterSchedule.date == selected_date
+        ).all()
+
+        for schedule in schedules_to_update:
+            schedule.is_blocked = block_status
+
+        # Обновляем общее состояние дня
+        user_schedule_entry = session.query(UserSchedule).filter(
+            UserSchedule.user_id == master_id,
+            UserSchedule.date == selected_date
+        ).first()
+
+        if user_schedule_entry:
+            user_schedule_entry.is_blocked = block_status
+        else:
+            new_user_schedule = UserSchedule(
+                user_id=master_id,
+                date=selected_date,
+                day_of_week=selected_date.weekday() + 1,
+                is_blocked=block_status
+            )
+            session.add(new_user_schedule)
+
+        session.commit()
+        logger.info(f"День {selected_date} {'заблокирован' if block_status else 'разблокирован'} для мастера {master_id}.")
+        return True
+
+    except Exception as e:
+        logger.error(f"Ошибка при изменении состояния дня {selected_date}: {e}")
+        session.rollback()
+        return False
+
+
+async def toggle_block_date(callback_query: CallbackQuery, master_id: int, selected_date: datetime.date):
+    """Отображает временные слоты для выбранного мастера и даты."""
+    start_time = 10
+    end_time = 22
+    time_slots = [f"{hour:02}:00" for hour in range(start_time, end_time + 1)]
+
+    try:
+        logger.info(f"Загружаем заблокированные слоты для мастера {master_id} на {selected_date}.")
+
+        with SessionFactory() as session:
+            # Получаем заблокированные временные слоты
+            blocked_slots = set(
+                entry.start_time.strftime('%H:%M') for entry in session.query(MasterSchedule).filter(
+                    MasterSchedule.master_id == master_id,
+                    MasterSchedule.date == selected_date,
+                    MasterSchedule.is_blocked == True
+                ).all()
+            )
+
+            # Проверяем состояние дня
+            user_schedule_entry = session.query(UserSchedule).filter(
+                UserSchedule.user_id == master_id,
+                UserSchedule.date == selected_date
+            ).first()
+
+            is_day_blocked = user_schedule_entry.is_blocked if user_schedule_entry else False
+
+        logger.debug(f"Заблокированные слоты на {selected_date}: {blocked_slots}")
+
+        # Генерация кнопок для временных слотов
+        time_buttons = []
+        for time in time_slots:
+            if time in blocked_slots:
+                time_buttons.append(
+                    InlineKeyboardButton(text=f"❌ {time}", callback_data=f"unblock_time_{master_id}_{selected_date}_{time}")
+                )
+            else:
+                time_buttons.append(
+                    InlineKeyboardButton(text=f"{time}", callback_data=f"block_time_{master_id}_{selected_date}_{time}")
+                )
+
+        logger.debug(f"Кнопки для временных слотов на {selected_date}: {[btn.text for btn in time_buttons]}")
+
+        # Добавляем кнопку закрытия/открытия дня
+        if is_day_blocked:
+            time_buttons.append(
+                InlineKeyboardButton(text="✅ Открыть день", callback_data=f"open_day_{master_id}_{selected_date}")
+            )
+        else:
+            time_buttons.append(
+                InlineKeyboardButton(text="❌ Закрыть день", callback_data=f"close_day_{master_id}_{selected_date}")
+            )
+
+        time_buttons.append(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data=f"back_to_calendar_{master_id}")
+        )
+
+        # Формируем клавиатуру
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[time_buttons[i:i + 3] for i in range(0, len(time_buttons), 3)]
+        )
+
+        # Обновляем сообщение
+        await callback_query.message.edit_text(
+            f"Выберите временные слоты для {selected_date.strftime('%d.%m.%Y')}:",
+            reply_markup=markup
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при отображении временных слотов для {selected_date}: {e}")
+        await callback_query.message.edit_text("Произошла ошибка при загрузке временных слотов.")
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("back_to_calendar_"))
+async def back_to_calendar(callback_query: CallbackQuery, state: FSMContext):
+    """Обработчик кнопки 'Назад' для возвращения к календарю мастера."""
+    try:
+        # Извлекаем master_id из callback_data
+        master_id = int(callback_query.data.split("_")[3])
+        user_id = callback_query.from_user.id
+        logger.info(f"Пользователь {user_id} возвращается в календарь мастера {master_id}.")
+
+        # Генерация календаря для мастера
+        calendar_markup = await generate_schedule_calendar(master_id)
+        if not calendar_markup:
+            logger.error(f"Не удалось загрузить календарь для мастера {master_id}.")
+            await callback_query.message.edit_text("Не удалось загрузить календарь.", reply_markup=None)
+            return
+
+        # Отправляем календарь
+        await callback_query.message.edit_text(
+            "Настройте расписание мастера:",
+            reply_markup=calendar_markup
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при возвращении к календарю мастера: {e}")
+        await callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("open_day_"))
+async def open_day(callback_query: CallbackQuery):
+    """Открытие дня: разблокировка всех временных слотов."""
+    try:
+        # Разбор callback_data
+        data_parts = callback_query.data.split("_")
+        master_id_str, date_str = data_parts[2], data_parts[3]
+
+        # Проверяем master_id
+        if not master_id_str.isdigit():
+            logger.error(f"Некорректный master_id: {master_id_str}")
+            await callback_query.answer("Ошибка: Некорректный идентификатор мастера.")
+            return
+
+        master_id = int(master_id_str)
+
+        # Проверяем дату
+        try:
+            selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            logger.error(f"Некорректный формат даты: {date_str}")
+            await callback_query.answer("Ошибка: Некорректный формат даты.")
+            return
+
+        with SessionFactory() as session:
+            success = await toggle_day_block(session, master_id, selected_date, block_status=False)
+
+        if success:
+            await callback_query.answer(f"День {selected_date.strftime('%d.%m.%Y')} открыт для мастера.")
+            await toggle_block_date(callback_query, master_id, selected_date)
+        else:
+            await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+
+    except Exception as e:
+        logger.error(f"Ошибка разблокировки дня {selected_date}: {e}")
+        await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("close_day_"))
+async def close_day(callback_query: CallbackQuery):
+    """Закрытие дня: блокировка всех временных слотов."""
+    try:
+        # Разбор callback_data
+        data_parts = callback_query.data.split("_")
+        master_id_str, date_str = data_parts[2], data_parts[3]
+
+        # Проверяем master_id
+        if not master_id_str.isdigit():
+            logger.error(f"Некорректный master_id: {master_id_str}")
+            await callback_query.answer("Ошибка: Некорректный идентификатор мастера.")
+            return
+
+        master_id = int(master_id_str)
+
+        # Проверяем дату
+        try:
+            selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            logger.error(f"Некорректный формат даты: {date_str}")
+            await callback_query.answer("Ошибка: Некорректный формат даты.")
+            return
+
+        with SessionFactory() as session:
+            success = await toggle_day_block(session, master_id, selected_date, block_status=True)
+
+        if success:
+            await callback_query.answer(f"День {selected_date.strftime('%d.%m.%Y')} заблокирован для мастера.")
+            await toggle_block_date(callback_query, master_id, selected_date)
+        else:
+            await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+
+    except Exception as e:
+        logger.error(f"Ошибка блокировки дня: {e}")
+        await callback_query.message.edit_text("Произошла ошибка. Попробуйте позже.")
+
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("block_time_") or c.data.startswith("unblock_time_"))
+async def block_hour(c: CallbackQuery):
+    """Блокировка/разблокировка временного слота для конкретной даты."""
+    try:
+        # Разбор callback_data
+        data_parts = c.data.split("_")
+        if len(data_parts) != 5:  # Формат: block_time_{master_id}_{date}_{time}
+            logger.error(f"Неверный формат callback_data: {c.data}")
+            await c.answer("Ошибка: Неверный формат данных.")
+            return
+
+        action, master_id_str, date_str, time_str = data_parts[0], data_parts[2], data_parts[3], data_parts[4]
+
+        # Проверяем master_id
+        if not master_id_str.isdigit():
+            logger.error(f"Некорректный master_id: {master_id_str}")
+            await c.answer("Ошибка: Некорректный идентификатор мастера.")
+            return
+
+        master_id = int(master_id_str)
+
+        # Преобразуем дату и время
+        try:
+            selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            start_time = datetime.strptime(time_str, '%H:%M').time()
+        except ValueError:
+            logger.error(f"Некорректный формат даты или времени: {date_str}, {time_str}")
+            await c.answer("Ошибка: Некорректный формат даты или времени.")
+            return
+
+        logger.debug(f"Обрабатываем {action} для {selected_date} {start_time} (мастер: {master_id})")
+
+        with SessionFactory() as session:
+            # Проверяем наличие записи в расписании
+            schedule_entry = session.query(MasterSchedule).filter(
+                MasterSchedule.master_id == master_id,
+                MasterSchedule.date == selected_date,
+                MasterSchedule.start_time == start_time
+            ).first()
+
+            if schedule_entry:
+                # Изменяем статус блокировки
+                schedule_entry.is_blocked = not schedule_entry.is_blocked
+                updated_status = "разблокирован" if not schedule_entry.is_blocked else "заблокирован"
+                logger.info(f"Временной слот {start_time} {updated_status}.")
+            else:
+                # Если записи нет, создаём новую запись с блокировкой
+                new_schedule = MasterSchedule(
+                    master_id=master_id,
+                    date=selected_date,
+                    start_time=start_time,
+                    day_of_week=selected_date.weekday() + 1,
+                    is_blocked=True
+                )
+                session.add(new_schedule)
+                logger.info(f"Создана новая запись: {selected_date} {start_time} заблокирован.")
+
+            # Сохраняем изменения в базе данных
+            session.commit()
+
+        # Обновляем отображение временных слотов
+        await toggle_block_date(c, master_id, selected_date)
+
+    except Exception as e:
+        logger.error(f"Ошибка при изменении статуса времени: {e}")
+        await c.message.edit_text("Произошла ошибка. Попробуйте снова.")
+
+
+async def generate_schedule_calendar(master_id, month_offset=0, state=None):
+    """Генерация календаря для управления расписанием мастера."""
+    now = datetime.now() + relativedelta(months=month_offset)
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    start_of_month = datetime(now.year, now.month, 1).date()
+    first_weekday = start_of_month.weekday()
+
+    month_name = now.strftime('%B %Y')
+    calendar_buttons = [[InlineKeyboardButton(text=month_name, callback_data="ignore")]]  # Кнопка месяца
+
+    week_days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    calendar_buttons.append([InlineKeyboardButton(text=day, callback_data="ignore") for day in week_days])
+
+    # Сбор заблокированных дней для мастера и пользователей
+    with SessionFactory() as session:
+        try:
+            blocked_dates_master = set(
+                schedule.date for schedule in session.query(MasterSchedule).filter(
+                    MasterSchedule.master_id == master_id,
+                    MasterSchedule.is_blocked == True,
+                    MasterSchedule.date >= start_of_month,
+                    MasterSchedule.date <= start_of_month + timedelta(days=days_in_month - 1)
+                ).all()
+            )
+
+            blocked_dates_user = set(
+                schedule.date for schedule in session.query(UserSchedule).filter(
+                    UserSchedule.user_id == master_id,
+                    UserSchedule.is_blocked == True,
+                    UserSchedule.date >= start_of_month,
+                    UserSchedule.date <= start_of_month + timedelta(days=days_in_month - 1)
+                ).all()
+            )
+
+            blocked_dates = blocked_dates_master | blocked_dates_user  # Объединяем заблокированные даты
+
+            fully_blocked_dates = set(
+                schedule.date for schedule in session.query(UserSchedule).filter(
+                    UserSchedule.user_id == master_id,
+                    UserSchedule.is_blocked == True,
+                    UserSchedule.date >= start_of_month,
+                    UserSchedule.date <= start_of_month + timedelta(days=days_in_month - 1)
+                ).all()
+            )
+
+        except SQLAlchemyError as e:
+            logger.error(f"Ошибка при запросе расписания мастера {master_id}: {e}")
+            blocked_dates = set()
+            fully_blocked_dates = set()
+
+    current_day = 1
+    while current_day <= days_in_month:
+        week = []
+
+        for i in range(first_weekday):
+            week.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
+
+        while current_day <= days_in_month and len(week) < 7:
+            current_date = start_of_month + timedelta(days=current_day - 1)
+            day_str = current_date.strftime('%d')
+
+            # Проверка на полностью заблокированные дни (для пользователей)
+            if current_date in fully_blocked_dates:
+                week.append(
+                    InlineKeyboardButton(text=f"{day_str}❌", callback_data=f"toggle_block_{master_id}_{current_date}"))
+            # Проверка на частично заблокированные дни (для мастера и пользователей)
+            elif current_date in blocked_dates:
+                week.append(
+                    InlineKeyboardButton(text=f"{day_str}🟠", callback_data=f"toggle_block_{master_id}_{current_date}"))
+            # Блокировка прошедших дней
+            elif current_date < datetime.now().date():
+                week.append(InlineKeyboardButton(text=f"{day_str}❌", callback_data="ignore"))
+            else:
+                week.append(
+                    InlineKeyboardButton(text=day_str, callback_data=f"toggle_block_{master_id}_{current_date}"))
+
+            current_day += 1
+
+        calendar_buttons.append(week)
+
+        first_weekday = 0
+
+    # Кнопки для перехода по месяцам
+    calendar_buttons.append([
+        InlineKeyboardButton(text="⬅️", callback_data=f"prev_month_{month_offset - 1}"),
+        InlineKeyboardButton(text="➡️", callback_data=f"next_month_{month_offset + 1}")
+    ])
+
+    if state:
+        calendar_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_panel")])
+
+    else:
+        calendar_buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_panel")])
+
+    return InlineKeyboardMarkup(inline_keyboard=calendar_buttons)
+
+
+@router_admin.callback_query(lambda c: c.data.startswith("prev_month_") or c.data.startswith("next_month_"))
+async def change_month(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Обработчик переключения месяца.
+    """
+    user_id = callback_query.from_user.id
+    logger.info(f"Пользователь {user_id} переключает месяц.")
+
+    if user_id not in ADMIN_ID:
+        logger.warning(f"Пользователь {user_id} попытался переключить месяц без прав.")
+        await callback_query.answer("🚫 У вас нет прав для доступа к этому меню.", show_alert=True)
+        return
+
+    # Получаем состояние (master_id)
+    state_data = await state.get_data()
+    master_id = state_data.get("master_id")
+    if not master_id:
+        logger.warning(f"Для пользователя {user_id} не выбран мастер.")
+        await callback_query.answer("Выберите мастера перед изменением месяца.", show_alert=True)
+        return
+
+    # Получаем смещение месяца (из callback_data)
+    month_offset = int(callback_query.data.split("_")[2])
+
+    # Генерация календаря для выбранного мастера с новым смещением
+    calendar_markup = await generate_schedule_calendar(master_id, month_offset)
+    if not calendar_markup:
+        logger.error(f"Не удалось загрузить календарь для мастера {master_id}.")
+        await callback_query.message.edit_text("Не удалось загрузить календарь.", reply_markup=None)
+        return
+
+    # Отправляем обновленный календарь
+    await callback_query.message.edit_text(
+        "Настройте расписание мастера:",
+        reply_markup=calendar_markup
+    )
+    logger.info(f"Календарь для мастера {master_id} обновлен с новым месяцем.")

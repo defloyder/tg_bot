@@ -67,23 +67,5 @@ async def generate_calendar(master_id: str, year: int = None, month: int = None)
     if week:
         calendar_buttons.row(*week)
 
-    navigation_buttons = []
-    if month == now.month and year == now.year:
-        next_month = (month % 12) + 1
-        next_year = year + 1 if next_month == 1 else year
-        navigation_buttons.append(InlineKeyboardButton(
-            text="➡️ Следующий месяц",
-            callback_data=f"calendar_{master_id}_{next_year}_{next_month}"
-        ))
-
-    elif month == now.month + 1 or (now.month == 12 and month == 1 and year == now.year + 1):
-        navigation_buttons.append(InlineKeyboardButton(
-            text="⬅️ Текущий месяц",
-            callback_data=f"calendar_{master_id}_{now.year}_{now.month}"
-        ))
-
-    if navigation_buttons:
-        calendar_buttons.row(*navigation_buttons)
-
     calendar_buttons.row(InlineKeyboardButton(text="⬅ Назад", callback_data="booking"))
     return calendar_buttons.as_markup()

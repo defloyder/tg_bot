@@ -19,7 +19,7 @@ async def process_my_bookings(callback_query: CallbackQuery):
     """Обработчик для кнопки 'Мои записи'."""
     await callback_query.answer()
     await callback_query.message.edit_text(
-        "<b>Выберите опцию:</b>",
+        "<b>В данном меню вы можете просмотреть свои записи👀💞</b>",
         reply_markup=my_bookings_menu(),
         parse_mode="HTML"
     )
@@ -119,7 +119,7 @@ async def process_user_history(callback_query: CallbackQuery):
 
             if not user_history_bookings:
                 await callback_query.message.edit_text(
-                    "ℹ <b>У вас ещё нет ни одной записи.</b> Как только они появятся, вы сможете посмотреть их здесь.",
+                    "ℹ <b>У вас ещё не было ни одной записи.</b> Здесь вы можете просматривать все прошедшие и отмененные записи💞💫",
                     reply_markup=back_to_my_bookings_menu(),
                     parse_mode="HTML"
                 )

@@ -1,4 +1,6 @@
 import calendar
+
+from aiogram.fsm.context import FSMContext
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, time as datetime_time, timedelta
 
@@ -8,6 +10,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
+from config.reader import ADMIN_ID
 from database.database import SessionFactory
 from database.models import MasterSchedule, UserSchedule, Booking
 from logger_config import logger
@@ -18,37 +21,72 @@ router_schedule = Router(name="master_schedule")
 
 
 
-@router_schedule.callback_query(lambda c: c.data == "manage_schedule")
-async def manage_schedule(c: CallbackQuery):
-    """Начало работы с расписанием мастера."""
-    logger.info(f"Обработчик manage_schedule вызван пользователем {c.from_user.id}.")
+@router_schedule.callback_query(lambda c: c.data == "manage_schedule" or c.data.startswith("manage_schedule_"))
+async def manage_schedule(c: CallbackQuery, state: FSMContext):
+    """
+    Начало работы с расписанием мастера.
+    Если это администратор, он работает с расписанием выбранного мастера.
+    Если это мастер, он работает со своим расписанием.
+    """
+    user_id = c.from_user.id
+    logger.info(f"Обработчик manage_schedule вызван пользователем {user_id}.")
+
+    # Проверяем, админ ли пользователь
+    is_admin = user_id in ADMIN_ID
+    master_id = None
+
     try:
-        calendar_markup = await generate_schedule_calendar(c.from_user.id)
+        if is_admin:
+            # Если администратор, извлекаем master_id из callback_data или state
+            if c.data.startswith("manage_schedule_"):
+                master_id = int(c.data.split("_")[1])
+                # Сохраняем master_id в state для последующего использования
+                await state.update_data(master_id=master_id)
+                logger.info(f"Администратор {user_id} управляет расписанием мастера {master_id}.")
+            else:
+                state_data = await state.get_data()
+
+                master_id = state_data.get("master_id")
+                if not master_id:
+                    logger.error("Ошибка: не указан ID мастера в callback_data и контексте.")
+                    await c.message.edit_text("Ошибка: не указан ID мастера.", reply_markup=None)
+                    return
+                logger.info(f"Администратор {user_id} продолжает работу с мастером {master_id}.")
+        else:
+            # Для мастера используем его user_id
+            master_id = user_id
+            logger.info(f"Мастер {user_id} работает со своим расписанием.")
+
+        # Генерация календаря
+        calendar_markup = await generate_schedule_calendar(master_id)
         if not calendar_markup:
-            logger.warning(f"Не удалось сгенерировать календарь для мастера {c.from_user.id}.")
+            logger.warning(f"Не удалось сгенерировать календарь для мастера {master_id}.")
             await c.message.edit_text(
                 "Не удалось загрузить расписание. Попробуйте позже.",
                 reply_markup=None
             )
             return
 
-        logger.debug(f"Календарь успешно сгенерирован для мастера {c.from_user.id}.")
+        logger.debug(f"Календарь успешно сгенерирован для мастера {master_id}.")
         await c.message.edit_text(
-            "Выберите дату для блокировки/разблокировки:",
+            f"Вы управляете расписанием мастера {master_id}. Выберите дату для блокировки/разблокировки:",
             reply_markup=calendar_markup
         )
+
     except SQLAlchemyError as db_error:
-        logger.error(f"Ошибка базы данных при открытии расписания мастера {c.from_user.id}: {db_error}")
+        logger.error(f"Ошибка базы данных при открытии расписания мастера {master_id}: {db_error}")
         await c.message.edit_text(
             "Произошла ошибка базы данных. Попробуйте позже.",
             reply_markup=None
         )
     except Exception as e:
-        logger.error(f"Неожиданная ошибка при открытии расписания мастера {c.from_user.id}: {e}")
+        logger.error(f"Неожиданная ошибка при открытии расписания мастера {master_id}: {e}")
         await c.message.edit_text(
             "Произошла ошибка. Попробуйте позже.",
             reply_markup=None
         )
+
+
 
 
 async def generate_schedule_calendar(master_id, month_offset=0):
